@@ -8,6 +8,7 @@ import com.example.flaviumarena.data.ConflictException;
 import com.example.flaviumarena.data.DbHelper;
 import com.example.flaviumarena.data.PermissionDeniedException;
 import com.example.flaviumarena.data.DevData;
+import com.example.flaviumarena.data.SessionActiveException;
 import com.example.flaviumarena.data.SqliteArenaRepository;
 import com.example.flaviumarena.data.ValidationException;
 import com.example.flaviumarena.model.AppSettings;
@@ -100,7 +101,20 @@ public final class PermissionSelfTest {
         rejected("A wrong password is refused", ValidationException.class,
                 () -> repo.login(DevData.CORE_EMAIL, "not-the-password", Role.CORE));
 
-        final User faculty = repo.login(FACULTY_EMAIL, TEST_PASSWORD, Role.FACULTY);
+        // Setting up the first Faculty logged that account in, and an account has one
+        // session at a time, so this login has to take that session over.
+        rejected("An account that is logged in cannot log in a second time",
+                SessionActiveException.class,
+                () -> repo.login(FACULTY_EMAIL, TEST_PASSWORD, Role.FACULTY));
+        final User faculty = repo.login(FACULTY_EMAIL, TEST_PASSWORD, Role.FACULTY,
+                "Self-test", true);
+        final User firstCore = repo.login(DevData.CORE_EMAIL, DevData.CORE_PASSWORD,
+                Role.CORE);
+        final User replaced = repo.login(DevData.CORE_EMAIL, DevData.CORE_PASSWORD, Role.CORE,
+                "Another phone", true);
+        denied("A session that was signed out from another device has no permissions",
+                () -> repo.saveSport(firstCore, sport("Signed Out")));
+        allowed("Logging out lets the account log in again", () -> repo.logout(replaced));
         final User core = repo.login(DevData.CORE_EMAIL, DevData.CORE_PASSWORD, Role.CORE);
         final User asoo = repo.login(DevData.ASOO_EMAIL, DevData.ASOO_PASSWORD,
                 Role.ASOO_CORE);

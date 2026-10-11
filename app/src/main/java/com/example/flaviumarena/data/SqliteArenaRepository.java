@@ -76,8 +76,7 @@ public class SqliteArenaRepository implements ArenaRepository {
      * account is active, and its stored role is the one chosen on the login screen.
      * Choosing a role never grants it: the role always comes from the users table.
      */
-    @Override
-    public User login(String email, String password, String expectedRole) {
+    private User checkCredentials(String email, String password, String expectedRole) {
         if (!Role.isValid(expectedRole)) {
             throw new ValidationException("Choose how you are logging in.");
         }
@@ -143,6 +142,175 @@ public class SqliteArenaRepository implements ArenaRepository {
                     + Role.label(expectedRole) + ". Go back and choose the role you were given.");
         }
         return user;
+    }
+
+    // ----- Sessions: one live session per account -----
+
+    /** A session that has not been used for this long counts as ended. */
+    static final long SESSION_IDLE_MILLIS = 7L * 24 * 60 * 60 * 1000;
+
+    public static final String END_TAKEN_OVER = "TAKEN_OVER";
+    public static final String END_EXPIRED = "EXPIRED";
+    public static final String END_LOGGED_OUT = "LOGGED_OUT";
+    public static final String END_DEACTIVATED = "ACCOUNT_DEACTIVATED";
+    public static final String END_PASSWORD_RESET = "PASSWORD_RESET";
+
+    @Override
+    public User login(String email, String password, String expectedRole) {
+        return login(email, password, expectedRole, "this device", false);
+    }
+
+    @Override
+    public User login(String email, String password, String expectedRole, String device,
+                      boolean takeOver) {
+        // The password is checked first, so someone who does not know it learns nothing
+        // about whether the account is in use.
+        User user = checkCredentials(email, password, expectedRole);
+        user.sessionId = openSession(user, device, takeOver);
+        return user;
+    }
+
+    /**
+     * Opens a session for a user whose password has just been checked. Everything
+     * happens in one transaction, and the database has a rule of its own (a unique
+     * index) against two live sessions for one account, so two logins at the same
+     * moment cannot both succeed.
+     */
+    private String openSession(User user, String device, boolean takeOver) {
+        SQLiteDatabase db = helper.getWritableDatabase();
+        long now = System.currentTimeMillis();
+        db.beginTransaction();
+        try {
+            // A session that was abandoned (app removed, phone lost) ends by itself.
+            endSessions(db, "user_id = ? AND last_seen_at < ?", END_EXPIRED, user.id,
+                    String.valueOf(now - SESSION_IDLE_MILLIS));
+
+            String otherDevice = null;
+            long lastSeen = 0;
+            Cursor c = db.rawQuery("SELECT device, last_seen_at FROM sessions "
+                    + "WHERE user_id = ? AND revoked_at IS NULL", new String[]{user.id});
+            try {
+                if (c.moveToFirst()) {
+                    otherDevice = c.getString(0);
+                    lastSeen = c.getLong(1);
+                }
+            } finally {
+                c.close();
+            }
+            if (otherDevice != null) {
+                if (!takeOver) {
+                    throw new SessionActiveException("This account is already logged in"
+                            + (otherDevice.isEmpty() ? "" : " on " + otherDevice)
+                            + " (last active " + DateUtil.formatTimestamp(lastSeen) + "). "
+                            + "Log out there first, or sign that session out and continue "
+                            + "here.");
+                }
+                endSessions(db, "user_id = ?", END_TAKEN_OVER, user.id);
+            }
+
+            String id = newSessionId();
+            ContentValues cv = new ContentValues();
+            cv.put("id", id);
+            cv.put("user_id", user.id);
+            cv.put("device", clean(device));
+            cv.put("created_at", now);
+            cv.put("last_seen_at", now);
+            db.insertOrThrow("sessions", null, cv);
+            db.setTransactionSuccessful();
+            return id;
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    /** Ends every live session that matches the condition. */
+    private static void endSessions(SQLiteDatabase db, String where, String reason,
+                                    String... args) {
+        ContentValues cv = new ContentValues();
+        cv.put("revoked_at", System.currentTimeMillis());
+        cv.put("revoked_reason", reason);
+        db.update("sessions", cv, "revoked_at IS NULL AND " + where, args);
+    }
+
+    /** A long random value nobody can guess. */
+    private static String newSessionId() {
+        byte[] bytes = new byte[32];
+        new java.security.SecureRandom().nextBytes(bytes);
+        StringBuilder text = new StringBuilder();
+        for (byte b : bytes) {
+            text.append(String.format(java.util.Locale.US, "%02x", b));
+        }
+        return text.toString();
+    }
+
+    /** The id of the user of a live session, or null. Old sessions are ended on the way. */
+    private String userOfLiveSession(String sessionId) {
+        if (sessionId == null) {
+            return null;
+        }
+        String userId = null;
+        long lastSeen = 0;
+        Cursor c = query("SELECT user_id, last_seen_at FROM sessions "
+                + "WHERE id = ? AND revoked_at IS NULL", sessionId);
+        try {
+            if (c.moveToFirst()) {
+                userId = c.getString(0);
+                lastSeen = c.getLong(1);
+            }
+        } finally {
+            c.close();
+        }
+        if (userId == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        if (lastSeen < now - SESSION_IDLE_MILLIS) {
+            endSessions(helper.getWritableDatabase(), "id = ?", END_EXPIRED, sessionId);
+            return null;
+        }
+        return userId;
+    }
+
+    @Override
+    public User resumeSession(String sessionId) {
+        String userId = userOfLiveSession(sessionId);
+        User user = userId == null ? null : getUser(userId);
+        if (user == null) {
+            return null;
+        }
+        SQLiteDatabase db = helper.getWritableDatabase();
+        if (!user.active) {
+            endSessions(db, "id = ?", END_DEACTIVATED, sessionId);
+            return null;
+        }
+        // Remember that the session is in use, so it does not expire.
+        ContentValues cv = new ContentValues();
+        cv.put("last_seen_at", System.currentTimeMillis());
+        db.update("sessions", cv, "id = ?", new String[]{sessionId});
+        user.sessionId = sessionId;
+        return user;
+    }
+
+    @Override
+    public String getSessionEndReason(String sessionId) {
+        if (sessionId == null) {
+            return "";
+        }
+        Cursor c = query("SELECT revoked_reason FROM sessions "
+                + "WHERE id = ? AND revoked_at IS NOT NULL", sessionId);
+        try {
+            return c.moveToFirst() ? c.getString(0) : "";
+        } finally {
+            c.close();
+        }
+    }
+
+    @Override
+    public void logout(User actor) {
+        if (actor != null && actor.sessionId != null) {
+            endSessions(helper.getWritableDatabase(), "id = ?", END_LOGGED_OUT,
+                    actor.sessionId);
+        }
     }
 
     /** Lets a logged-in organiser change their own password after proving the old one. */
@@ -225,6 +393,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         String id = insertUser(name, email, password, Role.FACULTY, null);
         User created = getUser(id);
         audit(created, "FIRST_FACULTY_CREATED", "First Faculty account set up: " + created.name);
+        created.sessionId = openSession(created, "this device", false);
         return created;
     }
 
@@ -321,6 +490,8 @@ public class SqliteArenaRepository implements ArenaRepository {
         checkPassword(newPassword);
 
         storePassword(userId, newPassword);
+        // Whoever was logged in with the old password is signed out.
+        endSessions(helper.getWritableDatabase(), "user_id = ?", END_PASSWORD_RESET, userId);
         audit(actor, "PASSWORD_RESET", "Password reset for " + target.name);
     }
 
@@ -344,6 +515,10 @@ public class SqliteArenaRepository implements ArenaRepository {
         ContentValues cv = new ContentValues();
         cv.put("active", active ? 1 : 0);
         db.update("users", cv, "id = ?", new String[]{userId});
+        if (!active) {
+            // A deactivated account is signed out at once.
+            endSessions(db, "user_id = ?", END_DEACTIVATED, userId);
+        }
         audit(actor, active ? "ACCOUNT_REACTIVATED" : "ACCOUNT_DEACTIVATED",
                 Role.label(target.role) + " " + target.name);
     }
@@ -3050,13 +3225,24 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     /**
      * Returns the actor as stored in the database. The object passed in by a screen is
-     * never trusted for its role: only its id is used to look the real record up.
+     * never trusted for its role: only its id and session are used to look the real
+     * record up.
      */
     private User trusted(User actor) {
         if (actor == null || actor.id == null) {
             return null;
         }
-        return getUser(actor.id);
+        // The session must still be live and must belong to this user. A session that
+        // was signed out, taken over or left unused too long gives no identity at all,
+        // so the person is treated as a member of the public.
+        if (!actor.id.equals(userOfLiveSession(actor.sessionId))) {
+            return null;
+        }
+        User user = getUser(actor.id);
+        if (user != null) {
+            user.sessionId = actor.sessionId;
+        }
+        return user;
     }
 
     private static String newId() {

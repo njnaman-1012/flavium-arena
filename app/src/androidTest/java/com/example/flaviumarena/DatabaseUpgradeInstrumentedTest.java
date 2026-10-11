@@ -182,7 +182,7 @@ public class DatabaseUpgradeInstrumentedTest {
         assertTrue(core.active);
         // That first login replaced the weak stored value, and the password still works.
         assertTrue(storedHash(db, "u-core").startsWith("pbkdf2$"));
-        assertEquals("u-core", repo.login("oldcore@flavium.test", PASSWORD, Role.CORE).id);
+        assertEquals("u-core", core.id);
         User asoo = repo.login("oldasoo@flavium.test", PASSWORD, Role.ASOO_CORE);
         assertEquals("u-asoo", asoo.id);
 
@@ -206,8 +206,15 @@ public class DatabaseUpgradeInstrumentedTest {
         assertFalse(repo.getBranch(teams.get(0).branchId).active);
         assertTrue(repo.getFlag("core_can_finalise"));
         assertTrue(repo.getFlag("core_can_appoint_captains"));
-        // One log entry per upgrade step: 1 to 2, 2 to 3, 3 to 4, 4 to 5, and 5 to 6.
-        assertEquals(5, DatabaseUtils.queryNumEntries(db, "admin_audit"));
+        // One log entry per upgrade step: 1 to 2, 2 to 3, 3 to 4, 4 to 5, 5 to 6, 6 to 7.
+        assertEquals(6, DatabaseUtils.queryNumEntries(db, "admin_audit"));
+
+        // Version 7 rebuilt the users table for the Coach role and added the rules for
+        // one live session per account and one active Branch CR per branch.
+        assertEquals(0, DatabaseUtils.queryNumEntries(db, "coach_sports"));
+        assertEquals(2, DatabaseUtils.queryNumEntries(db, "sqlite_master",
+                "type = 'index' AND name IN ('one_live_session_per_user', "
+                        + "'one_active_cr_per_branch')"));
 
         // Version 6 only added tables, which are empty.
         assertEquals(0, DatabaseUtils.queryNumEntries(db, "event_rounds"));
@@ -218,7 +225,7 @@ public class DatabaseUpgradeInstrumentedTest {
 
         // Version 5 rebuilt the matches table: the match and its history are still
         // attached to each other, and the new tables exist and are empty.
-        assertEquals(1, repo.getScoreAudit(repo.login("oldcore@flavium.test", PASSWORD, Role.CORE), "m1").size());
+        assertEquals(1, repo.getScoreAudit(core, "m1").size());
         assertEquals(0, repo.getPeriods("m1").size());
         assertEquals(0, repo.getEvents("m1").size());
         assertEquals("", m.externalUrl);

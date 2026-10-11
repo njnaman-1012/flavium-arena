@@ -1,6 +1,7 @@
 package com.example.flaviumarena;
 
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.EditText;
@@ -11,7 +12,9 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.core.content.ContextCompat;
 
 import com.example.flaviumarena.auth.Session;
+import com.example.flaviumarena.data.ArenaException;
 import com.example.flaviumarena.data.DevData;
+import com.example.flaviumarena.data.SessionActiveException;
 import com.example.flaviumarena.model.Role;
 import com.example.flaviumarena.model.User;
 
@@ -52,7 +55,7 @@ public class LoginActivity extends BaseActivity {
 
         findViewById(R.id.btnSetupFaculty).setOnClickListener(v ->
                 startActivity(new Intent(this, FacultySetupActivity.class)));
-        findViewById(R.id.btnLogin).setOnClickListener(v -> login());
+        findViewById(R.id.btnLogin).setOnClickListener(v -> login(false));
         findViewById(R.id.btnChangeRole).setOnClickListener(v -> showRoles());
         findViewById(R.id.btnFillDev).setOnClickListener(v -> fillDevAccount());
         findViewById(R.id.btnRepairDev).setOnClickListener(v -> repairDevAccount());
@@ -144,14 +147,23 @@ public class LoginActivity extends BaseActivity {
                 });
     }
 
-    private void login() {
-        boolean ok = attempt(() -> {
-            User user = repo.login(textOf(etEmail), etPassword.getText().toString(), chosenRole);
-            Session.login(this, user.id);
+    /**
+     * An account has one live session at a time. When the account is already logged in
+     * somewhere else the login is refused, and the person can choose to sign that other
+     * session out, which runs this again with takeOver = true.
+     */
+    private void login(boolean takeOver) {
+        try {
+            User user = repo.login(textOf(etEmail), etPassword.getText().toString(),
+                    chosenRole, Build.MODEL, takeOver);
+            Session.login(this, user);
             toast("Logged in as " + Role.label(user.role));
-        });
-        if (ok) {
             openHome();
+        } catch (SessionActiveException e) {
+            showDialog(e.getMessage(), R.drawable.ic_info, false, "Sign out the other session",
+                    "Cancel", () -> login(true));
+        } catch (ArenaException e) {
+            showMessage(e.getMessage());
         }
     }
 }

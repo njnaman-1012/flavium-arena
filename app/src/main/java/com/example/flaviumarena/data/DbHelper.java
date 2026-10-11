@@ -31,11 +31,13 @@ import java.util.UUID;
  *      match_events (goals, cards...).
  *   6  Events with many entrants (races, relays, swimming, throws): event_rounds,
  *      event_entries, event_attempts and event_audit.
+ *   7  Login sessions (one live session per account), the COACH role with the sports a
+ *      coach looks after, and a database rule for one active Branch CR per branch.
  */
 public class DbHelper extends SQLiteOpenHelper {
 
     public static final String DB_NAME = "flavium_arena.db";
-    public static final int DB_VERSION = 6;
+    public static final int DB_VERSION = 7;
     private static final String TAG = "DbHelper";
 
     private final boolean seedDevData;
@@ -124,6 +126,8 @@ public class DbHelper extends SQLiteOpenHelper {
         addVersion4Schema(db);
         addVersion5Schema(db);
         addVersion6Schema(db);
+        addVersion7Schema(db);
+        addBranchCrRule(db);
 
         SeedData.insertSampleBranches(db);
         if (seedDevData) {
@@ -153,7 +157,7 @@ public class DbHelper extends SQLiteOpenHelper {
                 + "salt TEXT NOT NULL, "
                 + "password_hash TEXT NOT NULL, "
                 + "role TEXT NOT NULL "
-                + "CHECK (role IN ('FACULTY','CORE','ASOO_CORE','CAPTAIN')), "
+                + "CHECK (role IN ('FACULTY','CORE','ASOO_CORE','COACH','CAPTAIN')), "
                 + "active INTEGER NOT NULL DEFAULT 1, "
                 + "branch_id TEXT REFERENCES branches(id))");
     }
@@ -223,6 +227,9 @@ public class DbHelper extends SQLiteOpenHelper {
                 writeAdminAudit(db, null, "System", "DATABASE_UPGRADE",
                         "Upgraded from version 5 to 6. Heats, finals and throwing events "
                                 + "are now available. No existing data was changed.");
+            }
+            if (oldVersion < 7) {
+                upgradeToVersion7(db);
             }
         } catch (RuntimeException e) {
             Log.e(TAG, "Database upgrade from version " + oldVersion + " failed", e);
@@ -497,5 +504,74 @@ public class DbHelper extends SQLiteOpenHelper {
                 + "action TEXT NOT NULL, "
                 + "detail TEXT NOT NULL DEFAULT '', "
                 + "reason TEXT NOT NULL DEFAULT '')");
+    }
+
+    // ----- Version 7 -----
+
+    private static void addVersion7Schema(SQLiteDatabase db) {
+        // One row per login. A session is live while revoked_at is empty. The id is a
+        // long random value: it is what the device keeps, never the password.
+        db.execSQL("CREATE TABLE sessions ("
+                + "id TEXT PRIMARY KEY, "
+                + "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                + "device TEXT NOT NULL DEFAULT '', "
+                + "created_at INTEGER NOT NULL, "
+                + "last_seen_at INTEGER NOT NULL, "
+                + "revoked_at INTEGER, "
+                + "revoked_reason TEXT NOT NULL DEFAULT '')");
+        // The database itself refuses a second live session for the same account, so
+        // two logins at the same moment cannot both succeed.
+        db.execSQL("CREATE UNIQUE INDEX one_live_session_per_user ON sessions (user_id) "
+                + "WHERE revoked_at IS NULL");
+
+        // The sports a coach looks after.
+        db.execSQL("CREATE TABLE coach_sports ("
+                + "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                + "sport_id TEXT NOT NULL REFERENCES sports(id) ON DELETE CASCADE, "
+                + "PRIMARY KEY (user_id, sport_id))");
+    }
+
+    /** The database itself refuses a second active Branch CR for a branch. */
+    private static void addBranchCrRule(SQLiteDatabase db) {
+        db.execSQL("CREATE UNIQUE INDEX one_active_cr_per_branch ON users (branch_id) "
+                + "WHERE role = 'CAPTAIN' AND active = 1");
+    }
+
+    /**
+     * Version 6 to 7. The users table is rebuilt only to allow the new COACH role
+     * (SQLite cannot change the list of allowed values of an existing table). Every
+     * account is copied across unchanged, with the same id. Then the new tables are
+     * added. Nobody is logged in afterwards: sessions start empty.
+     */
+    private void upgradeToVersion7(SQLiteDatabase db) {
+        long before = DatabaseUtils.queryNumEntries(db, "users");
+        String columns = "id, name, email, salt, password_hash, role, active, branch_id, "
+                + "failed_logins, locked_until";
+        createUsers(db, "users_new");
+        db.execSQL("ALTER TABLE users_new ADD COLUMN failed_logins INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE users_new ADD COLUMN locked_until INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("INSERT INTO users_new (" + columns + ") SELECT " + columns + " FROM users");
+        db.execSQL("DROP TABLE users");
+        db.execSQL("ALTER TABLE users_new RENAME TO users");
+        long after = DatabaseUtils.queryNumEntries(db, "users");
+        if (after != before) {
+            // Throwing here rolls the whole upgrade back.
+            throw new IllegalStateException("Accounts were lost while upgrading: " + before
+                    + " before, " + after + " after");
+        }
+        addVersion7Schema(db);
+
+        // The rule can only be added when the existing accounts already obey it.
+        long clashes = DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM (SELECT branch_id "
+                + "FROM users WHERE role = 'CAPTAIN' AND active = 1 GROUP BY branch_id "
+                + "HAVING COUNT(*) > 1)", null);
+        if (clashes == 0) {
+            addBranchCrRule(db);
+        }
+        writeAdminAudit(db, null, "System", "DATABASE_UPGRADE",
+                "Upgraded from version 6 to 7. " + after + " accounts kept. Login sessions "
+                        + "and the Coach role are now available. Everyone has to log in again."
+                        + (clashes == 0 ? "" : " " + clashes + " branch(es) have more than "
+                        + "one active Branch CR: deactivate the extra accounts."));
     }
 }

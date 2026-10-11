@@ -91,6 +91,11 @@ public abstract class BaseActivity extends AppCompatActivity {
         // Read the user again: they may have logged in or out on another screen,
         // or their account may have been deactivated.
         currentUser = Session.currentUser(this, repo);
+        // Say so when the session was ended from somewhere else.
+        String ended = Session.takeEndMessage();
+        if (ended != null) {
+            showMessage(ended);
+        }
     }
 
     /** Sets the layout, the title bar and the padding that keeps content clear of system bars. */

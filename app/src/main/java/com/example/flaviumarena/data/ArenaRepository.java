@@ -36,6 +36,24 @@ public interface ArenaRepository {
     /** expectedRole is the role chosen on the login screen; it must match the stored role. */
     User login(String email, String password, String expectedRole);
 
+    /**
+     * Logs in and opens a session. An account has one live session at a time: if it
+     * already has one, the login is refused with SessionActiveException unless
+     * "takeOver" is true, in which case the other session is signed out first.
+     * "device" is a name shown to the person who is refused, for example the phone model.
+     */
+    User login(String email, String password, String expectedRole, String device,
+               boolean takeOver);
+
+    /** The user of a saved session, or null when that session is no longer live. */
+    User resumeSession(String sessionId);
+
+    /** Why a session ended: TAKEN_OVER, EXPIRED, LOGGED_OUT..., or "" while it is live. */
+    String getSessionEndReason(String sessionId);
+
+    /** Ends the session of this user, so the account can log in again anywhere. */
+    void logout(User actor);
+
     User getUser(String id);
 
     /** The logged-in organiser changes their own password; the current one must be given. */

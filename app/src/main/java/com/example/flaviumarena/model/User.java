@@ -12,4 +12,10 @@ public class User {
     public String branchId;
     /** Filled in by the repository for display only. */
     public String branchName;
+    /**
+     * The login session this object belongs to. It is set by the repository when
+     * someone logs in. Without a live session the repository treats the person as a
+     * member of the public, whatever the other fields say.
+     */
+    public String sessionId;
 }

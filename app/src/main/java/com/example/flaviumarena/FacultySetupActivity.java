@@ -66,7 +66,7 @@ public class FacultySetupActivity extends BaseActivity {
             }
             User faculty = repo.createFirstFaculty(textOf(etName), textOf(etEmail), password,
                     authorisedEmail);
-            Session.login(this, faculty.id);
+            Session.login(this, faculty);
         });
         if (ok) {
             toast("Faculty account created");

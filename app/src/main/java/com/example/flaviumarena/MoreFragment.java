@@ -123,7 +123,7 @@ public class MoreFragment extends BaseFragment {
             addRow(R.drawable.ic_logout, "Log out", "", true, () ->
                     main().showDialog("Are you sure you want to log out?", R.drawable.ic_logout,
                             false, "Log out", "Cancel", () -> {
-                                Session.logout(requireContext());
+                                Session.logout(requireContext(), repo(), user());
                                 main().openHome();
                             }));
         }
