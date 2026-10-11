@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/toolbar" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="16dp">
+
+            <!-- Which sport, and how far the suggested values can be trusted -->
+            <TextView
+                android:id="@+id/tvCategoryIntro"
+                style="@style/Arena.Body"
+                android:text="Sport" />
+
+            <!-- Shown when matches have started and the rules can no longer be changed -->
+            <TextView
+                android:id="@+id/tvRulesLocked"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_banner"
+                android:padding="12dp"
+                android:textColor="@color/banner_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Ready-made categories of the sport (new categories only) -->
+            <TextView
+                android:id="@+id/tvPresetLabel"
+                style="@style/Arena.Label"
+                android:text="Start from" />
+
+            <Spinner
+                android:id="@+id/spPreset"
+                android:layout_width="match_parent"
+                android:layout_height="50dp" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Category name" />
+
+            <EditText
+                android:id="@+id/etCategoryName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter the category name"
+                android:inputType="textCapWords" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Registration deadline (long-press to clear)" />
+
+            <EditText
+                android:id="@+id/etDeadline"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Tap to choose a date"
+                android:inputType="none" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="Rules for this category"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <!-- The questions of the sport's template are added here by RuleForm -->
+            <LinearLayout
+                android:id="@+id/rulesContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnSaveCategory"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="12dp"
+        android:text="Save" />
+</LinearLayout>

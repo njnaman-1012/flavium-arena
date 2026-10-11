@@ -1,0 +1,559 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/toolbar" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="20dp">
+
+            <!-- ============ Scoreboard: every visitor sees this ============ -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card_soft"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:id="@+id/tvStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_input"
+                    android:paddingStart="14dp"
+                    android:paddingTop="5dp"
+                    android:paddingEnd="14dp"
+                    android:paddingBottom="5dp"
+                    android:text="UPCOMING"
+                    android:textColor="@color/primary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTeamAName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center"
+                    android:text="Side A"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvScore"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="4dp"
+                    android:text="0 - 0"
+                    android:textColor="@color/text_primary"
+                    android:textSize="46sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTeamBName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="Side B"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <!-- What the big number means: goals, sets, runs... -->
+                <TextView
+                    android:id="@+id/tvScoreCaption"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- Shown while a completed result has not been finalised -->
+            <TextView
+                android:id="@+id/tvStatusNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_banner"
+                android:padding="12dp"
+                android:textColor="@color/banner_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Set-by-set, innings or period breakdown: rows are added in code -->
+            <TextView
+                android:id="@+id/tvBreakdownTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Sets"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/breakdownRows"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical" />
+
+            <!-- Cricket: opens the match on CricHeroes -->
+            <Button
+                android:id="@+id/btnOpenLive"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Open Live Score"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvLiveNote"
+                style="@style/Arena.Body"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:visibility="gone" />
+
+            <!-- Goals, cards and other events -->
+            <TextView
+                android:id="@+id/tvEventsTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="Match events"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/eventRows"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/tvMatchInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card_grey"
+                android:lineSpacingExtra="6dp"
+                android:padding="16dp"
+                android:text="Match details"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <!-- ============ Controls for whoever may score this match ============ -->
+            <LinearLayout
+                android:id="@+id/scorePanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Run this match"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <!-- Status: one tap for the usual next step, a list for the rest -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <Spinner
+                        android:id="@+id/spStatus"
+                        android:layout_width="0dp"
+                        android:layout_height="50dp"
+                        android:layout_weight="1" />
+
+                    <Button
+                        android:id="@+id/btnSetStatus"
+                        style="@style/Widget.Arena.Button.Small"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:text="Set status" />
+                </LinearLayout>
+
+                <!-- Sets engine: volleyball, badminton, table tennis, squash, tennis... -->
+                <LinearLayout
+                    android:id="@+id/panelSets"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvCurrentSet"
+                        style="@style/Arena.Label"
+                        android:text="Set 1" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnPointA"
+                            android:layout_width="0dp"
+                            android:layout_height="72dp"
+                            android:layout_weight="1"
+                            android:text="+1 A" />
+
+                        <Button
+                            android:id="@+id/btnPointB"
+                            android:layout_width="0dp"
+                            android:layout_height="72dp"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:text="+1 B" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnUndoA"
+                            style="@style/Widget.Arena.Button.Soft"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Take 1 back" />
+
+                        <Button
+                            android:id="@+id/btnUndoB"
+                            style="@style/Widget.Arena.Button.Soft"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:text="Take 1 back" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnEditSet"
+                        style="@style/Widget.Arena.Button.Soft"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Correct a set" />
+                </LinearLayout>
+
+                <!-- Score engine: football, basketball -->
+                <LinearLayout
+                    android:id="@+id/panelScore"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvScoreLabelA"
+                                style="@style/Arena.Label"
+                                android:maxLines="1"
+                                android:text="Side A" />
+
+                            <EditText
+                                android:id="@+id/etScoreA"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:hint="Score"
+                                android:inputType="number" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvScoreLabelB"
+                                style="@style/Arena.Label"
+                                android:maxLines="1"
+                                android:text="Side B" />
+
+                            <EditText
+                                android:id="@+id/etScoreB"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:hint="Score"
+                                android:inputType="number" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvPeriodLabel"
+                        style="@style/Arena.Label"
+                        android:text="Period in play" />
+
+                    <Spinner
+                        android:id="@+id/spPeriod"
+                        android:layout_width="match_parent"
+                        android:layout_height="50dp" />
+
+                    <!-- Only when the rules use a shoot-out to settle a level match -->
+                    <LinearLayout
+                        android:id="@+id/panelPenalties"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            style="@style/Arena.Label"
+                            android:text="Penalty shoot-out (only if the score is level)" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <EditText
+                                android:id="@+id/etPenA"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:hint="Side A"
+                                android:inputType="number" />
+
+                            <EditText
+                                android:id="@+id/etPenB"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:hint="Side B"
+                                android:inputType="number" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/Arena.Label"
+                        android:text="Score details (optional)" />
+
+                    <EditText
+                        android:id="@+id/etNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Anything worth noting"
+                        android:inputType="text" />
+
+                    <Button
+                        android:id="@+id/btnSaveScore"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="Save score" />
+
+                    <Button
+                        android:id="@+id/btnAddEvent"
+                        style="@style/Widget.Arena.Button.Soft"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Record a match event"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <!-- Result engine: chess -->
+                <LinearLayout
+                    android:id="@+id/panelResult"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        style="@style/Arena.Label"
+                        android:text="Result" />
+
+                    <Button
+                        android:id="@+id/btnWinA"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Side A won" />
+
+                    <Button
+                        android:id="@+id/btnDraw"
+                        style="@style/Widget.Arena.Button.Soft"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Draw" />
+
+                    <Button
+                        android:id="@+id/btnWinB"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Side B won" />
+                </LinearLayout>
+
+                <!-- Cricket engine: innings totals -->
+                <LinearLayout
+                    android:id="@+id/panelCricket"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        style="@style/Arena.Body"
+                        android:layout_marginTop="12dp"
+                        android:text="Ball-by-ball scoring is done in CricHeroes. Enter the innings totals here so the result and the table are correct." />
+
+                    <Button
+                        android:id="@+id/btnInnings1"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Enter first innings" />
+
+                    <Button
+                        android:id="@+id/btnInnings2"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Enter second innings" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ============ Finalising: Faculty, or a Core when allowed ============ -->
+            <Button
+                android:id="@+id/btnFinalise"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Finalise result"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/correctionPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Change a final result"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    style="@style/Arena.Body"
+                    android:text="A final result is never changed silently. Give the reason; it is kept in the score history." />
+
+                <TextView
+                    style="@style/Arena.Label"
+                    android:text="Reason" />
+
+                <EditText
+                    android:id="@+id/etReason"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Required"
+                    android:inputType="text" />
+
+                <Button
+                    android:id="@+id/btnReopen"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Reopen result for correction" />
+            </LinearLayout>
+
+            <!-- ============ Fixture management: Faculty and Core ============ -->
+            <LinearLayout
+                android:id="@+id/corePanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <Button
+                    android:id="@+id/btnEditFixture"
+                    style="@style/Widget.Arena.Button.Soft"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Edit fixture details" />
+
+                <Button
+                    android:id="@+id/btnDeleteFixture"
+                    style="@style/Widget.Arena.Button.Danger"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Delete fixture" />
+            </LinearLayout>
+
+            <!-- ============ Score history: staff only ============ -->
+            <TextView
+                android:id="@+id/tvAuditTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
+                android:text="Score history"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvAudit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:lineSpacingExtra="4dp"
+                android:padding="16dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

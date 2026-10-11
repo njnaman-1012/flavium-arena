@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp">
+
+    <TextView
+        style="@style/Arena.Label"
+        android:text="Sport name" />
+
+    <EditText
+        android:id="@+id/etSportName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="For example: Football"
+        android:inputType="textCapWords" />
+
+    <TextView
+        style="@style/Arena.Label"
+        android:text="Short description (optional)" />
+
+    <EditText
+        android:id="@+id/etSportDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Enter description"
+        android:inputType="textCapSentences" />
+</LinearLayout>

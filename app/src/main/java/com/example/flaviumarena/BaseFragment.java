@@ -1,0 +1,23 @@
+package com.example.flaviumarena;
+
+import androidx.fragment.app.Fragment;
+
+import com.example.flaviumarena.data.ArenaRepository;
+import com.example.flaviumarena.model.User;
+
+/** Parent of the four tabs. Gives them the repository and user held by MainActivity. */
+public abstract class BaseFragment extends Fragment {
+
+    protected MainActivity main() {
+        return (MainActivity) requireActivity();
+    }
+
+    protected ArenaRepository repo() {
+        return main().repo;
+    }
+
+    /** The logged-in user, or null for a guest. */
+    protected User user() {
+        return main().currentUser;
+    }
+}

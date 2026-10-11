@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Brand -->
+    <color name="primary">#4B35D9</color>
+    <color name="primary_dark">#3A27B8</color>
+    <color name="primary_soft">#E1E2FA</color>
+    <color name="lavender">#ECEBFB</color>
+
+    <!-- Text -->
+    <color name="text_primary">#1B1B2B</color>
+    <color name="text_secondary">#6E6E80</color>
+    <color name="text_hint">#B7B7C6</color>
+
+    <!-- Surfaces and lines -->
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_grey">#F4F4F8</color>
+    <color name="stroke">#E6E6EE</color>
+
+    <!-- Status -->
+    <color name="success">#18A558</color>
+    <color name="danger">#E0303B</color>
+    <color name="danger_soft">#FDE7E9</color>
+    <color name="amber">#F2B636</color>
+    <color name="teal">#45C4C1</color>
+    <color name="teal_dark">#2FA7A6</color>
+
+    <!-- Medals -->
+    <color name="medal_gold">#E3A917</color>
+    <color name="medal_silver">#9EA7B5</color>
+    <color name="medal_bronze">#C27C3D</color>
+
+    <!-- Development banner -->
+    <color name="banner_background">#FFF3CD</color>
+    <color name="banner_text">#664D03</color>
+</resources>

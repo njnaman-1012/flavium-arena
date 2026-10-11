@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/toolbar" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="16dp">
+
+            <TextView
+                android:id="@+id/tvRegHint"
+                style="@style/Arena.Body"
+                android:text="Category rules" />
+
+            <TextView
+                android:id="@+id/tvRegStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_badge"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:text="Status: PENDING"
+                android:textColor="@color/primary"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <!-- Shown when only part of the form may be changed -->
+            <TextView
+                android:id="@+id/tvRegNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_banner"
+                android:padding="12dp"
+                android:textColor="@color/banner_text"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Whom the entry represents -->
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Branch" />
+
+            <Spinner
+                android:id="@+id/spRegBranch"
+                android:layout_width="match_parent"
+                android:layout_height="50dp" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Academic year" />
+
+            <Spinner
+                android:id="@+id/spRegYear"
+                android:layout_width="match_parent"
+                android:layout_height="50dp" />
+
+            <!-- Team categories -->
+            <TextView
+                android:id="@+id/tvTeamLabelLabel"
+                style="@style/Arena.Label"
+                android:text="Team label (only if this branch enters a second team)" />
+
+            <EditText
+                android:id="@+id/etTeamLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="For example: Team B"
+                android:inputType="textCapWords" />
+
+            <!-- Individual categories -->
+            <TextView
+                android:id="@+id/tvRegNameLabel"
+                style="@style/Arena.Label"
+                android:text="Participant name" />
+
+            <EditText
+                android:id="@+id/etRegName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter the participant's name"
+                android:inputType="textPersonName|textCapWords" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Captain or contact person" />
+
+            <EditText
+                android:id="@+id/etContactName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter contact name"
+                android:inputType="textPersonName|textCapWords" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Contact phone (never shown to the public)" />
+
+            <EditText
+                android:id="@+id/etContactPhone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter phone number"
+                android:inputType="phone" />
+
+            <TextView
+                android:id="@+id/tvMembersLabel"
+                style="@style/Arena.Label"
+                android:text="Team members, one name per line" />
+
+            <EditText
+                android:id="@+id/etMembers"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="top"
+                android:hint="Member names"
+                android:inputType="textMultiLine|textCapWords"
+                android:minLines="4" />
+
+            <!-- Logo -->
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Team logo (optional)" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/ivRegLogo"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/bg_circle_soft"
+                    android:contentDescription="Team logo"
+                    android:padding="18dp"
+                    android:src="@drawable/ic_users" />
+
+                <Button
+                    android:id="@+id/btnPickLogo"
+                    style="@style/Widget.Arena.Button.Small"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:layout_weight="1"
+                    android:text="Choose a picture" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnApprove"
+                style="@style/Widget.Arena.Button.Soft"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Approve"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnReject"
+                style="@style/Widget.Arena.Button.Soft"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Reject"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnDeleteReg"
+                style="@style/Widget.Arena.Button.Danger"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Delete registration"
+                android:visibility="gone" />
+        </LinearLayout>
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnSaveReg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="12dp"
+        android:text="Save" />
+</LinearLayout>

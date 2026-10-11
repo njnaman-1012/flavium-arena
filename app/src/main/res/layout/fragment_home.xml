@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- Greeting -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvAvatar"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_circle_primary"
+                android:gravity="center"
+                android:text="G"
+                android:textColor="@color/white"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvGreeting"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:text="Good afternoon"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Four quick actions -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/actSports"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="54dp"
+                    android:layout_height="54dp"
+                    android:background="@drawable/bg_circle_soft"
+                    android:contentDescription="@null"
+                    android:padding="15dp"
+                    android:src="@drawable/ic_trophy"
+                    app:tint="@color/primary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="Sports"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/actFixtures"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="54dp"
+                    android:layout_height="54dp"
+                    android:background="@drawable/bg_circle_soft"
+                    android:contentDescription="@null"
+                    android:padding="15dp"
+                    android:src="@drawable/ic_live"
+                    app:tint="@color/primary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="Live scores"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/actResults"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="54dp"
+                    android:layout_height="54dp"
+                    android:background="@drawable/bg_circle_soft"
+                    android:contentDescription="@null"
+                    android:padding="15dp"
+                    android:src="@drawable/ic_result"
+                    app:tint="@color/primary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="Results"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/actTables"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="54dp"
+                    android:layout_height="54dp"
+                    android:background="@drawable/bg_circle_soft"
+                    android:contentDescription="@null"
+                    android:padding="15dp"
+                    android:src="@drawable/ic_table"
+                    app:tint="@color/primary" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="Points tables"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Sliding banners -->
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/bannerPager"
+            android:layout_width="match_parent"
+            android:layout_height="132dp"
+            android:layout_marginTop="22dp" />
+
+        <LinearLayout
+            android:id="@+id/bannerDots"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:orientation="horizontal" />
+
+        <!-- Medal table: the leading branches -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/Arena.SectionTitle"
+                android:text="Medal table" />
+
+            <ImageView
+                android:id="@+id/btnAllMedals"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:contentDescription="Full medal table"
+                android:padding="6dp"
+                android:src="@drawable/ic_forward"
+                app:tint="@color/primary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/homeMedals"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/tvNoHomeMedals"
+            style="@style/Arena.Body"
+            android:layout_marginTop="8dp"
+            android:text="No medals have been decided yet."
+            android:visibility="gone" />
+
+        <!-- Live and upcoming matches -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/Arena.SectionTitle"
+                android:text="Live and upcoming" />
+
+            <ImageView
+                android:id="@+id/btnAllMatches"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:contentDescription="All matches"
+                android:padding="6dp"
+                android:src="@drawable/ic_forward"
+                app:tint="@color/primary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/homeMatches"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/tvNoMatches"
+            style="@style/Arena.Body"
+            android:layout_marginTop="8dp"
+            android:text="No live or upcoming matches right now."
+            android:visibility="gone" />
+
+        <!-- Lavender card: changes with the role of the user -->
+        <LinearLayout
+            android:id="@+id/cardAccess"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:background="@drawable/bg_card_soft"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="18dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvAccessText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="4dp"
+                    android:text="Are you an organiser? Log in to manage matches."
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/tvAccessAction"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:drawablePadding="6dp"
+                    android:text="Continue"
+                    android:textColor="@color/primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    app:drawableEndCompat="@drawable/ic_forward"
+                    app:drawableTint="@color/primary" />
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:layout_marginStart="12dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ill_board" />
+        </LinearLayout>
+
+        <!-- Sports -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/Arena.SectionTitle"
+                android:text="Sports" />
+
+            <ImageView
+                android:id="@+id/btnAllSports"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:contentDescription="All sports"
+                android:padding="6dp"
+                android:src="@drawable/ic_forward"
+                app:tint="@color/primary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/homeSports"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="-6dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginEnd="-6dp"
+            android:orientation="vertical" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_banner"
+            android:padding="12dp"
+            android:text="@string/dev_banner"
+            android:textColor="@color/banner_text"
+            android:textSize="12sp" />
+    </LinearLayout>
+</ScrollView>

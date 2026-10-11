@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">FLAVIUM Arena</string>
+    <string name="dev_banner">LOCAL DEVELOPMENT BUILD\nData is stored only on this device (SQLite). Nothing is synchronised online.</string>
+</resources>

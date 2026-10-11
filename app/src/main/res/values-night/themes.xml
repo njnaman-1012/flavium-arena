@@ -1,0 +1,4 @@
+<resources>
+    <!-- The design is light only, so dark mode uses the same light theme. -->
+    <style name="Theme.FlaviumArena" parent="Base.Theme.FlaviumArena" />
+</resources>

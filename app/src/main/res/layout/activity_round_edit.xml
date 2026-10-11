@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/toolbar" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="16dp">
+
+            <!-- Only a race that is run in heats has this choice -->
+            <LinearLayout
+                android:id="@+id/panelStage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    style="@style/Arena.Label"
+                    android:layout_marginTop="0dp"
+                    android:text="Heat or final" />
+
+                <Spinner
+                    android:id="@+id/spStage"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp" />
+
+                <TextView
+                    android:id="@+id/tvHeatNumberLabel"
+                    style="@style/Arena.Label"
+                    android:text="Heat number" />
+
+                <EditText
+                    android:id="@+id/etHeatNumber"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="1, 2, 3 ..."
+                    android:inputType="number" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/Arena.Label"
+                        android:text="Date" />
+
+                    <EditText
+                        android:id="@+id/etRoundDate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Tap to choose"
+                        android:inputType="none" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/Arena.Label"
+                        android:text="Time" />
+
+                    <EditText
+                        android:id="@+id/etRoundTime"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Tap to choose"
+                        android:inputType="none" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Venue" />
+
+            <EditText
+                android:id="@+id/etRoundVenue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter venue"
+                android:inputType="textCapWords" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Asoo Core who enters the results" />
+
+            <Spinner
+                android:id="@+id/spRoundAssigned"
+                android:layout_width="match_parent"
+                android:layout_height="50dp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnSaveRound"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="12dp"
+        android:text="Save" />
+</LinearLayout>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        DEVELOPMENT VALUES - used only by debug builds (the ones Android Studio's Run
+        button installs). They replace the values in app/src/main/res/values/config.xml.
+        The address below is not a real mailbox; it only lets the first-Faculty set-up
+        screen be tried out during development.
+    -->
+    <string name="faculty_email" translatable="false">faculty@flavium.test</string>
+    <bool name="seed_dev_data">true</bool>
+</resources>

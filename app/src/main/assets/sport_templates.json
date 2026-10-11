@@ -1,0 +1,3064 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "key": "cricket",
+      "name": "Cricket",
+      "description": "Bat and ball team sport",
+      "picture": "cricket",
+      "engine": "CRICKET",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Team",
+          "options": [
+            "Team"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players in the eleven",
+          "type": "number",
+          "default": "11",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players in the eleven",
+          "type": "number",
+          "default": "11",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "substitutes",
+          "label": "Substitutes allowed",
+          "type": "number",
+          "default": "4",
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "overs",
+          "label": "Overs per innings",
+          "type": "number",
+          "default": "10",
+          "min": 1,
+          "max": 50
+        },
+        {
+          "key": "innings_per_side",
+          "label": "Innings per side",
+          "type": "number",
+          "default": "1",
+          "min": 1,
+          "max": 2
+        },
+        {
+          "key": "max_overs_per_bowler",
+          "label": "Most overs one bowler may bowl",
+          "type": "number",
+          "default": "2",
+          "min": 1,
+          "max": 10
+        },
+        {
+          "key": "tie_rule",
+          "label": "If the scores are level",
+          "type": "choice",
+          "default": "Super over",
+          "options": [
+            "Super over",
+            "Match is tied"
+          ]
+        },
+        {
+          "key": "live_score_note",
+          "label": "Live scoring",
+          "type": "text",
+          "default": "Ball-by-ball scoring is done in CricHeroes. Add the match link to each fixture."
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "League",
+          "options": [
+            "League",
+            "Knockout"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_draw",
+          "label": "League points for a draw or tie",
+          "type": "number",
+          "default": "1",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_no_result",
+          "label": "League points for no result",
+          "type": "number",
+          "default": "1",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's T10",
+          "values": {
+            "overs": "10",
+            "max_overs_per_bowler": "2"
+          }
+        },
+        {
+          "name": "Men's T20",
+          "values": {
+            "overs": "20",
+            "max_overs_per_bowler": "4"
+          }
+        },
+        {
+          "name": "Women's T10",
+          "values": {
+            "overs": "10",
+            "max_overs_per_bowler": "2"
+          }
+        }
+      ]
+    },
+    {
+      "key": "badminton",
+      "name": "Badminton",
+      "description": "Indoor racquet sport",
+      "picture": "badminton",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Singles",
+          "options": [
+            "Singles",
+            "Doubles"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Game"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many games",
+          "type": "number",
+          "default": "3",
+          "hint": "An odd number, for example 3 or 5.",
+          "min": 1,
+          "max": 9
+        },
+        {
+          "key": "set_target",
+          "label": "Points needed to win a game",
+          "type": "number",
+          "default": "21",
+          "min": 1,
+          "max": 99
+        },
+        {
+          "key": "set_win_by",
+          "label": "Must lead by at least",
+          "type": "number",
+          "default": "2",
+          "hint": "2 means a game continues at deuce until one side is two ahead.",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_cap",
+          "label": "Highest score a game can reach (0 = no limit)",
+          "type": "number",
+          "default": "30",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "deciding_target",
+          "label": "Points needed in the deciding game (0 = same as the others)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Knockout",
+          "options": [
+            "Knockout",
+            "League"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Women's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Men's Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        },
+        {
+          "name": "Women's Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        },
+        {
+          "name": "Mixed Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        }
+      ]
+    },
+    {
+      "key": "table_tennis",
+      "name": "Table Tennis",
+      "description": "Indoor bat and ball sport",
+      "picture": "table_tennis",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Singles",
+          "options": [
+            "Singles",
+            "Doubles"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Game"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many games",
+          "type": "number",
+          "default": "5",
+          "hint": "An odd number, for example 3 or 5.",
+          "min": 1,
+          "max": 9
+        },
+        {
+          "key": "set_target",
+          "label": "Points needed to win a game",
+          "type": "number",
+          "default": "11",
+          "min": 1,
+          "max": 99
+        },
+        {
+          "key": "set_win_by",
+          "label": "Must lead by at least",
+          "type": "number",
+          "default": "2",
+          "hint": "2 means a game continues at deuce until one side is two ahead.",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_cap",
+          "label": "Highest score a game can reach (0 = no limit)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "deciding_target",
+          "label": "Points needed in the deciding game (0 = same as the others)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Knockout",
+          "options": [
+            "Knockout",
+            "League"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Women's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Men's Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        },
+        {
+          "name": "Women's Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        },
+        {
+          "name": "Mixed Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        }
+      ]
+    },
+    {
+      "key": "squash",
+      "name": "Squash",
+      "description": "Indoor racquet sport played against a wall",
+      "picture": "squash",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Singles",
+          "options": [
+            "Singles",
+            "Doubles"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Game"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many games",
+          "type": "number",
+          "default": "5",
+          "hint": "An odd number, for example 3 or 5.",
+          "min": 1,
+          "max": 9
+        },
+        {
+          "key": "set_target",
+          "label": "Points needed to win a game",
+          "type": "number",
+          "default": "11",
+          "min": 1,
+          "max": 99
+        },
+        {
+          "key": "set_win_by",
+          "label": "Must lead by at least",
+          "type": "number",
+          "default": "2",
+          "hint": "2 means a game continues at deuce until one side is two ahead.",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_cap",
+          "label": "Highest score a game can reach (0 = no limit)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "deciding_target",
+          "label": "Points needed in the deciding game (0 = same as the others)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Knockout",
+          "options": [
+            "Knockout",
+            "League"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Women's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        }
+      ]
+    },
+    {
+      "key": "lawn_tennis",
+      "name": "Lawn Tennis",
+      "description": "Racquet sport played in sets and games",
+      "picture": "lawn_tennis",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Singles",
+          "options": [
+            "Singles",
+            "Doubles"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Set"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many sets",
+          "type": "number",
+          "default": "3",
+          "hint": "An odd number: 1, 3 or 5.",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_target",
+          "label": "Games needed to win a set",
+          "type": "number",
+          "default": "6",
+          "min": 1,
+          "max": 10
+        },
+        {
+          "key": "set_win_by",
+          "label": "Must lead by at least (games)",
+          "type": "number",
+          "default": "2",
+          "min": 1,
+          "max": 2
+        },
+        {
+          "key": "tiebreak",
+          "label": "Play a tie-break when a set is level",
+          "type": "toggle",
+          "default": "yes"
+        },
+        {
+          "key": "tiebreak_at",
+          "label": "Tie-break starts when games are level at",
+          "type": "number",
+          "default": "6",
+          "showIfKey": "tiebreak",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 1,
+          "max": 10
+        },
+        {
+          "key": "tiebreak_points",
+          "label": "Points needed to win the tie-break",
+          "type": "number",
+          "default": "7",
+          "hint": "A tie-break must be won by two points.",
+          "showIfKey": "tiebreak",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 1,
+          "max": 21
+        },
+        {
+          "key": "deciding_set",
+          "label": "Deciding set",
+          "type": "choice",
+          "default": "Normal set",
+          "options": [
+            "Normal set",
+            "Match tie-break to 10 points"
+          ]
+        },
+        {
+          "key": "point_scoring",
+          "label": "Scoring inside a game",
+          "type": "choice",
+          "default": "Deuce and advantage",
+          "options": [
+            "Deuce and advantage",
+            "No-ad (next point wins at deuce)"
+          ]
+        },
+        {
+          "key": "set_cap",
+          "label": "Highest games in a set without tie-break (0 = no limit)",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "tiebreak",
+          "showIfValues": [
+            "no"
+          ],
+          "min": 0,
+          "max": 30
+        },
+        {
+          "key": "deciding_target",
+          "label": "",
+          "type": "fixed",
+          "default": "0"
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Knockout",
+          "options": [
+            "Knockout",
+            "League"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Women's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Men's Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        },
+        {
+          "name": "Women's Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        },
+        {
+          "name": "Mixed Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        }
+      ]
+    },
+    {
+      "key": "volleyball",
+      "name": "Volleyball",
+      "description": "Team sport played over a net, in sets",
+      "picture": "volleyball",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Team",
+          "options": [
+            "Team"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per team",
+          "type": "number",
+          "default": "6",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per team",
+          "type": "number",
+          "default": "12",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Set"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many sets",
+          "type": "number",
+          "default": "5",
+          "hint": "An odd number, for example 3 or 5.",
+          "min": 1,
+          "max": 9
+        },
+        {
+          "key": "set_target",
+          "label": "Points needed to win a set",
+          "type": "number",
+          "default": "25",
+          "min": 1,
+          "max": 99
+        },
+        {
+          "key": "set_win_by",
+          "label": "Must lead by at least",
+          "type": "number",
+          "default": "2",
+          "hint": "2 means a set continues at deuce until one side is two ahead.",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_cap",
+          "label": "Highest score a set can reach (0 = no limit)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "deciding_target",
+          "label": "Points needed in the deciding set (0 = same as the others)",
+          "type": "number",
+          "default": "15",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "League",
+          "options": [
+            "League",
+            "Knockout"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "3",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_draw",
+          "label": "League points for a draw or tie",
+          "type": "number",
+          "default": "1",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Team",
+          "values": {}
+        },
+        {
+          "name": "Women's Team",
+          "values": {}
+        },
+        {
+          "name": "Short format (best of 3 to 15)",
+          "values": {
+            "sets_best_of": "3",
+            "set_target": "15",
+            "deciding_target": "15"
+          }
+        }
+      ]
+    },
+    {
+      "key": "football",
+      "name": "Football",
+      "description": "Outdoor team sport",
+      "picture": "football",
+      "engine": "SCORE",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Team",
+          "options": [
+            "Team"
+          ]
+        },
+        {
+          "key": "team_format",
+          "label": "Team format",
+          "type": "choice",
+          "default": "7-a-side",
+          "options": [
+            "5-a-side",
+            "7-a-side",
+            "11-a-side"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per team",
+          "type": "number",
+          "default": "7",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per team",
+          "type": "number",
+          "default": "10",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "period_name",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Half"
+        },
+        {
+          "key": "periods",
+          "label": "Number of halves",
+          "type": "number",
+          "default": "2",
+          "min": 1,
+          "max": 4
+        },
+        {
+          "key": "period_minutes",
+          "label": "Minutes per half",
+          "type": "number",
+          "default": "20",
+          "min": 1,
+          "max": 60
+        },
+        {
+          "key": "allow_draw",
+          "label": "A match may end in a draw",
+          "type": "toggle",
+          "default": "yes",
+          "hint": "Usually on for a league, off for a knockout."
+        },
+        {
+          "key": "extra_time",
+          "label": "Play extra time if level",
+          "type": "toggle",
+          "default": "no",
+          "showIfKey": "allow_draw",
+          "showIfValues": [
+            "no"
+          ]
+        },
+        {
+          "key": "extra_time_minutes",
+          "label": "Minutes of extra time per half",
+          "type": "number",
+          "default": "5",
+          "showIfKey": "extra_time",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "penalty_shootout",
+          "label": "Penalty shoot-out if still level",
+          "type": "toggle",
+          "default": "yes",
+          "showIfKey": "allow_draw",
+          "showIfValues": [
+            "no"
+          ]
+        },
+        {
+          "key": "substitutions",
+          "label": "Substitutions",
+          "type": "choice",
+          "default": "Rolling (unlimited)",
+          "options": [
+            "Rolling (unlimited)",
+            "Limited"
+          ]
+        },
+        {
+          "key": "substitution_limit",
+          "label": "Substitutions allowed per team",
+          "type": "number",
+          "default": "5",
+          "showIfKey": "substitutions",
+          "showIfValues": [
+            "Limited"
+          ],
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "track_events",
+          "label": "Record goals and cards as match events",
+          "type": "toggle",
+          "default": "yes"
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "League",
+          "options": [
+            "League",
+            "Knockout"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "3",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_draw",
+          "label": "League points for a draw or tie",
+          "type": "number",
+          "default": "1",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's 7-a-side",
+          "values": {
+            "team_format": "7-a-side",
+            "team_min": "7",
+            "team_max": "10",
+            "period_minutes": "20"
+          }
+        },
+        {
+          "name": "Men's 5-a-side",
+          "values": {
+            "team_format": "5-a-side",
+            "team_min": "5",
+            "team_max": "8",
+            "period_minutes": "15"
+          }
+        },
+        {
+          "name": "Men's 11-a-side",
+          "values": {
+            "team_format": "11-a-side",
+            "team_min": "11",
+            "team_max": "16",
+            "period_minutes": "45",
+            "substitutions": "Limited"
+          }
+        },
+        {
+          "name": "Women's 7-a-side",
+          "values": {
+            "team_format": "7-a-side",
+            "team_min": "7",
+            "team_max": "10",
+            "period_minutes": "20"
+          }
+        }
+      ]
+    },
+    {
+      "key": "basketball",
+      "name": "Basketball",
+      "description": "Indoor team sport scored in points",
+      "picture": "basketball",
+      "engine": "SCORE",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Team",
+          "options": [
+            "Team"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per team",
+          "type": "number",
+          "default": "5",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per team",
+          "type": "number",
+          "default": "12",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "period_name",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Quarter"
+        },
+        {
+          "key": "periods",
+          "label": "Number of quarters",
+          "type": "number",
+          "default": "4",
+          "min": 1,
+          "max": 4
+        },
+        {
+          "key": "period_minutes",
+          "label": "Minutes per quarter",
+          "type": "number",
+          "default": "10",
+          "min": 1,
+          "max": 20
+        },
+        {
+          "key": "allow_draw",
+          "label": "A match may end level",
+          "type": "toggle",
+          "default": "no"
+        },
+        {
+          "key": "extra_time",
+          "label": "Play overtime if level",
+          "type": "toggle",
+          "default": "yes",
+          "showIfKey": "allow_draw",
+          "showIfValues": [
+            "no"
+          ]
+        },
+        {
+          "key": "extra_time_minutes",
+          "label": "Minutes per overtime period",
+          "type": "number",
+          "default": "5",
+          "showIfKey": "extra_time",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 1,
+          "max": 10
+        },
+        {
+          "key": "foul_limit",
+          "label": "Personal fouls before a player is out",
+          "type": "number",
+          "default": "5",
+          "min": 1,
+          "max": 10
+        },
+        {
+          "key": "track_events",
+          "label": "Record fouls as match events",
+          "type": "toggle",
+          "default": "yes"
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "League",
+          "options": [
+            "League",
+            "Knockout"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "1",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Team",
+          "values": {}
+        },
+        {
+          "name": "Women's Team",
+          "values": {}
+        },
+        {
+          "name": "3x3",
+          "values": {
+            "team_min": "3",
+            "team_max": "4",
+            "periods": "1",
+            "period_minutes": "10"
+          }
+        }
+      ]
+    },
+    {
+      "key": "tug_of_war",
+      "name": "Tug of War",
+      "description": "Two teams pull a rope against each other",
+      "picture": "tug_of_war",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Team",
+          "options": [
+            "Team"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum pullers per team",
+          "type": "number",
+          "default": "8",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum pullers per team",
+          "type": "number",
+          "default": "10",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "weight_limit_kg",
+          "label": "Combined team weight limit in kg (0 = none)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 1200
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Pull"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many pulls",
+          "type": "number",
+          "default": "3",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_target",
+          "label": "",
+          "type": "fixed",
+          "default": "1"
+        },
+        {
+          "key": "set_win_by",
+          "label": "",
+          "type": "fixed",
+          "default": "1"
+        },
+        {
+          "key": "set_cap",
+          "label": "",
+          "type": "fixed",
+          "default": "0"
+        },
+        {
+          "key": "deciding_target",
+          "label": "",
+          "type": "fixed",
+          "default": "0"
+        },
+        {
+          "key": "disqualification",
+          "label": "Disqualification rule",
+          "type": "text",
+          "default": "A team is disqualified after two cautions in one pull."
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Knockout",
+          "options": [
+            "Knockout",
+            "League"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Team",
+          "values": {}
+        },
+        {
+          "name": "Women's Team",
+          "values": {}
+        },
+        {
+          "name": "Mixed Team",
+          "values": {}
+        }
+      ]
+    },
+    {
+      "key": "pool_8_ball",
+      "name": "8-Ball Pool",
+      "description": "Cue sport, first to win the set number of frames",
+      "picture": "pool_8_ball",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Singles",
+          "options": [
+            "Singles",
+            "Doubles"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Frame"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many frames",
+          "type": "number",
+          "default": "5",
+          "hint": "Best of 5 is the same as a race to 3.",
+          "min": 1,
+          "max": 21
+        },
+        {
+          "key": "set_target",
+          "label": "",
+          "type": "fixed",
+          "default": "1"
+        },
+        {
+          "key": "set_win_by",
+          "label": "",
+          "type": "fixed",
+          "default": "1"
+        },
+        {
+          "key": "set_cap",
+          "label": "",
+          "type": "fixed",
+          "default": "0"
+        },
+        {
+          "key": "deciding_target",
+          "label": "",
+          "type": "fixed",
+          "default": "0"
+        },
+        {
+          "key": "break_rule",
+          "label": "Who breaks",
+          "type": "choice",
+          "default": "Alternate break",
+          "options": [
+            "Alternate break",
+            "Winner breaks"
+          ]
+        },
+        {
+          "key": "foul_rule",
+          "label": "Foul rule",
+          "type": "text",
+          "default": "Ball in hand anywhere on the table after a foul."
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Knockout",
+          "options": [
+            "Knockout",
+            "League"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Women's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        }
+      ]
+    },
+    {
+      "key": "carrom",
+      "name": "Carrom",
+      "description": "Board game, first to the points target wins a game",
+      "picture": "carrom",
+      "engine": "SETS",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Singles",
+          "options": [
+            "Singles",
+            "Doubles"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per pair",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Game"
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many games",
+          "type": "number",
+          "default": "3",
+          "hint": "An odd number, for example 3 or 5.",
+          "min": 1,
+          "max": 9
+        },
+        {
+          "key": "set_target",
+          "label": "Points needed to win a game",
+          "type": "number",
+          "default": "25",
+          "min": 1,
+          "max": 99
+        },
+        {
+          "key": "set_win_by",
+          "label": "Must lead by at least",
+          "type": "number",
+          "default": "1",
+          "hint": "2 means a game continues at deuce until one side is two ahead.",
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_cap",
+          "label": "Highest score a game can reach (0 = no limit)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "deciding_target",
+          "label": "Points needed in the deciding game (0 = same as the others)",
+          "type": "number",
+          "default": "0",
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "max_boards",
+          "label": "Most boards in one game (0 = no limit)",
+          "type": "number",
+          "default": "8",
+          "min": 0,
+          "max": 20
+        },
+        {
+          "key": "break_rule",
+          "label": "Who breaks first",
+          "type": "choice",
+          "default": "Toss",
+          "options": [
+            "Toss",
+            "Alternate"
+          ]
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Knockout",
+          "options": [
+            "Knockout",
+            "League"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Men's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Women's Singles",
+          "values": {
+            "participation": "Singles"
+          }
+        },
+        {
+          "name": "Doubles",
+          "values": {
+            "participation": "Doubles"
+          }
+        }
+      ]
+    },
+    {
+      "key": "chess",
+      "name": "Chess",
+      "description": "Board game decided by win, draw or loss",
+      "picture": "chess",
+      "engine": "RESULT",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Individual",
+          "options": [
+            "Individual",
+            "Team"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum boards per team",
+          "type": "number",
+          "default": "4",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum boards per team",
+          "type": "number",
+          "default": "5",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "time_control",
+          "label": "Time control",
+          "type": "choice",
+          "default": "Rapid",
+          "options": [
+            "Rapid",
+            "Blitz",
+            "Classical"
+          ]
+        },
+        {
+          "key": "clock_minutes",
+          "label": "Minutes on each clock",
+          "type": "number",
+          "default": "15",
+          "min": 1,
+          "max": 180
+        },
+        {
+          "key": "increment_seconds",
+          "label": "Seconds added after every move",
+          "type": "number",
+          "default": "10",
+          "min": 0,
+          "max": 60
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "Swiss",
+          "options": [
+            "Swiss",
+            "Round-robin",
+            "Knockout"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_draw",
+          "label": "League points for a draw or tie",
+          "type": "number",
+          "default": "1",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "rounds",
+          "label": "Number of rounds",
+          "type": "number",
+          "default": "5",
+          "showIfKey": "format",
+          "showIfValues": [
+            "Swiss"
+          ],
+          "min": 1,
+          "max": 15
+        },
+        {
+          "key": "tie_break",
+          "label": "Tie-break for equal points",
+          "type": "choice",
+          "default": "Buchholz",
+          "options": [
+            "Buchholz",
+            "Direct encounter",
+            "Number of wins"
+          ]
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "Open Rapid",
+          "values": {
+            "time_control": "Rapid",
+            "clock_minutes": "15",
+            "increment_seconds": "10"
+          }
+        },
+        {
+          "name": "Open Blitz",
+          "values": {
+            "time_control": "Blitz",
+            "clock_minutes": "3",
+            "increment_seconds": "2"
+          }
+        },
+        {
+          "name": "Women's Rapid",
+          "values": {
+            "time_control": "Rapid",
+            "clock_minutes": "15",
+            "increment_seconds": "10"
+          }
+        }
+      ]
+    },
+    {
+      "key": "athletics",
+      "name": "Athletics",
+      "description": "Track races, relays and throwing events",
+      "picture": "athletics",
+      "engine": "TIMED",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "event_kind",
+          "label": "Kind of event",
+          "type": "choice",
+          "default": "Track race",
+          "options": [
+            "Track race",
+            "Relay race",
+            "Throw"
+          ]
+        },
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Individual",
+          "options": [
+            "Individual",
+            "Relay"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum runners per relay team",
+          "type": "number",
+          "default": "4",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum runners per relay team",
+          "type": "number",
+          "default": "6",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "distance_m",
+          "label": "Distance in metres",
+          "type": "number",
+          "default": "100",
+          "hint": "For a relay, the distance of one leg.",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Track race",
+            "Relay race"
+          ],
+          "min": 50,
+          "max": 10000
+        },
+        {
+          "key": "lanes",
+          "label": "Lanes available",
+          "type": "number",
+          "default": "8",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Track race",
+            "Relay race"
+          ],
+          "min": 1,
+          "max": 10
+        },
+        {
+          "key": "heats",
+          "label": "Run heats before the final",
+          "type": "toggle",
+          "default": "yes",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Track race",
+            "Relay race"
+          ]
+        },
+        {
+          "key": "qualify_per_heat",
+          "label": "Finishers of each heat who qualify",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "heats",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 1,
+          "max": 8
+        },
+        {
+          "key": "fastest_losers",
+          "label": "Extra qualifiers by fastest time",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "heats",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 0,
+          "max": 8
+        },
+        {
+          "key": "implement",
+          "label": "Implement",
+          "type": "text",
+          "default": "",
+          "hint": "For example: Discus or Shot.",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Throw"
+          ]
+        },
+        {
+          "key": "attempts",
+          "label": "Attempts for every participant",
+          "type": "number",
+          "default": "3",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Throw"
+          ],
+          "min": 1,
+          "max": 6
+        },
+        {
+          "key": "finalists",
+          "label": "Best participants who get extra attempts (0 = none)",
+          "type": "number",
+          "default": "8",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Throw"
+          ],
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "extra_attempts",
+          "label": "Extra attempts for those finalists",
+          "type": "number",
+          "default": "3",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Throw"
+          ],
+          "min": 0,
+          "max": 3
+        },
+        {
+          "key": "unit",
+          "label": "Unit of measurement",
+          "type": "text",
+          "default": "metres",
+          "showIfKey": "event_kind",
+          "showIfValues": [
+            "Throw"
+          ]
+        },
+        {
+          "key": "tie_break",
+          "label": "If two results are equal",
+          "type": "choice",
+          "default": "Shared position",
+          "options": [
+            "Shared position",
+            "Second-best attempt",
+            "Run-off"
+          ]
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": [
+        {
+          "name": "100 m",
+          "values": {
+            "distance_m": "100",
+            "event_kind": "Track race",
+            "participation": "Individual",
+            "engine": "TIMED"
+          }
+        },
+        {
+          "name": "200 m",
+          "values": {
+            "distance_m": "200",
+            "event_kind": "Track race",
+            "participation": "Individual",
+            "engine": "TIMED"
+          }
+        },
+        {
+          "name": "400 m",
+          "values": {
+            "distance_m": "400",
+            "event_kind": "Track race",
+            "participation": "Individual",
+            "engine": "TIMED"
+          }
+        },
+        {
+          "name": "800 m",
+          "values": {
+            "distance_m": "800",
+            "heats": "no",
+            "event_kind": "Track race",
+            "participation": "Individual",
+            "engine": "TIMED"
+          }
+        },
+        {
+          "name": "1500 m",
+          "values": {
+            "distance_m": "1500",
+            "heats": "no",
+            "event_kind": "Track race",
+            "participation": "Individual",
+            "engine": "TIMED"
+          }
+        },
+        {
+          "name": "4 x 100 m Relay",
+          "values": {
+            "event_kind": "Relay race",
+            "participation": "Relay",
+            "distance_m": "100",
+            "team_min": "4",
+            "team_max": "6",
+            "engine": "TIMED"
+          }
+        },
+        {
+          "name": "4 x 400 m Relay",
+          "values": {
+            "event_kind": "Relay race",
+            "participation": "Relay",
+            "distance_m": "400",
+            "team_min": "4",
+            "team_max": "6",
+            "heats": "no",
+            "engine": "TIMED"
+          }
+        },
+        {
+          "name": "Discus Throw",
+          "values": {
+            "implement": "Discus",
+            "event_kind": "Throw",
+            "participation": "Individual",
+            "engine": "MEASURED",
+            "tie_break": "Second-best attempt"
+          }
+        },
+        {
+          "name": "Shot Put",
+          "values": {
+            "implement": "Shot",
+            "event_kind": "Throw",
+            "participation": "Individual",
+            "engine": "MEASURED",
+            "tie_break": "Second-best attempt"
+          }
+        },
+        {
+          "name": "Other race distance",
+          "values": {
+            "event_kind": "Track race",
+            "participation": "Individual",
+            "engine": "TIMED"
+          }
+        }
+      ]
+    },
+    {
+      "key": "swimming",
+      "name": "Swimming",
+      "description": "Timed races in the pool",
+      "picture": "swimming",
+      "engine": "TIMED",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "event_kind",
+          "label": "Kind of event",
+          "type": "choice",
+          "default": "Swimming race",
+          "options": [
+            "Swimming race",
+            "Swimming relay"
+          ]
+        },
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Individual",
+          "options": [
+            "Individual",
+            "Relay"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum swimmers per relay team",
+          "type": "number",
+          "default": "4",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum swimmers per relay team",
+          "type": "number",
+          "default": "6",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "stroke",
+          "label": "Stroke",
+          "type": "choice",
+          "default": "Freestyle",
+          "options": [
+            "Freestyle",
+            "Backstroke",
+            "Breaststroke",
+            "Butterfly",
+            "Individual medley"
+          ]
+        },
+        {
+          "key": "distance_m",
+          "label": "Distance in metres",
+          "type": "number",
+          "default": "100",
+          "hint": "For a relay, the distance of one leg.",
+          "min": 25,
+          "max": 10000
+        },
+        {
+          "key": "lanes",
+          "label": "Lanes available",
+          "type": "number",
+          "default": "8",
+          "min": 1,
+          "max": 10
+        },
+        {
+          "key": "heats",
+          "label": "Run heats before the final",
+          "type": "toggle",
+          "default": "yes"
+        },
+        {
+          "key": "qualify_per_heat",
+          "label": "Finishers of each heat who qualify",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "heats",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 1,
+          "max": 8
+        },
+        {
+          "key": "fastest_losers",
+          "label": "Extra qualifiers by fastest time",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "heats",
+          "showIfValues": [
+            "yes"
+          ],
+          "min": 0,
+          "max": 8
+        },
+        {
+          "key": "ranking",
+          "label": "Final ranking by",
+          "type": "choice",
+          "default": "Fastest time",
+          "options": [
+            "Fastest time"
+          ]
+        },
+        {
+          "key": "tie_break",
+          "label": "If two times are equal",
+          "type": "choice",
+          "default": "Shared position",
+          "options": [
+            "Shared position",
+            "Run-off"
+          ]
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        },
+        {
+          "key": "allow_dq",
+          "label": "Record disqualifications",
+          "type": "toggle",
+          "default": "yes"
+        }
+      ],
+      "presets": [
+        {
+          "name": "50 m Freestyle",
+          "values": {
+            "distance_m": "50",
+            "stroke": "Freestyle",
+            "event_kind": "Swimming race",
+            "participation": "Individual"
+          }
+        },
+        {
+          "name": "100 m Freestyle",
+          "values": {
+            "distance_m": "100",
+            "stroke": "Freestyle",
+            "event_kind": "Swimming race",
+            "participation": "Individual"
+          }
+        },
+        {
+          "name": "50 m Backstroke",
+          "values": {
+            "distance_m": "50",
+            "stroke": "Backstroke",
+            "event_kind": "Swimming race",
+            "participation": "Individual"
+          }
+        },
+        {
+          "name": "50 m Breaststroke",
+          "values": {
+            "distance_m": "50",
+            "stroke": "Breaststroke",
+            "event_kind": "Swimming race",
+            "participation": "Individual"
+          }
+        },
+        {
+          "name": "50 m Butterfly",
+          "values": {
+            "distance_m": "50",
+            "stroke": "Butterfly",
+            "event_kind": "Swimming race",
+            "participation": "Individual"
+          }
+        },
+        {
+          "name": "4 x 50 m Freestyle Relay",
+          "values": {
+            "event_kind": "Swimming relay",
+            "participation": "Relay",
+            "distance_m": "50",
+            "stroke": "Freestyle",
+            "team_min": "4",
+            "team_max": "6"
+          }
+        }
+      ]
+    },
+    {
+      "key": "custom",
+      "name": "Custom sport",
+      "description": "Any sport that is not in the catalogue",
+      "picture": "custom",
+      "engine": "SCORE",
+      "source": "Suggested defaults, not verified against the official rulebook. Confirm before use.",
+      "fields": [
+        {
+          "key": "engine",
+          "label": "How is it scored",
+          "type": "choice",
+          "default": "SCORE",
+          "hint": "SCORE: one score each. SETS: sets or games. RESULT: win, draw or loss. TIMED: race times. MEASURED: distances with attempts. CRICKET: innings.",
+          "options": [
+            "SCORE",
+            "SETS",
+            "RESULT",
+            "TIMED",
+            "MEASURED",
+            "CRICKET"
+          ]
+        },
+        {
+          "key": "participation",
+          "label": "Competition type",
+          "type": "choice",
+          "default": "Team",
+          "options": [
+            "Team",
+            "Individual"
+          ]
+        },
+        {
+          "key": "team_min",
+          "label": "Minimum players per team",
+          "type": "number",
+          "default": "5",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "team_max",
+          "label": "Maximum players per team",
+          "type": "number",
+          "default": "8",
+          "showIfKey": "participation",
+          "showIfValues": [
+            "Team",
+            "Doubles",
+            "Relay"
+          ],
+          "min": 1,
+          "max": 30
+        },
+        {
+          "key": "period_name",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Half",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SCORE"
+          ]
+        },
+        {
+          "key": "periods",
+          "label": "Number of parts",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SCORE"
+          ],
+          "min": 1,
+          "max": 9
+        },
+        {
+          "key": "period_minutes",
+          "label": "Minutes per part",
+          "type": "number",
+          "default": "20",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SCORE"
+          ],
+          "min": 1,
+          "max": 90
+        },
+        {
+          "key": "allow_draw",
+          "label": "A match may end in a draw",
+          "type": "toggle",
+          "default": "yes",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SCORE",
+            "RESULT"
+          ]
+        },
+        {
+          "key": "set_unit",
+          "label": "What one part of a match is called",
+          "type": "text",
+          "default": "Set",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SETS"
+          ]
+        },
+        {
+          "key": "sets_best_of",
+          "label": "Match is best of how many",
+          "type": "number",
+          "default": "3",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SETS"
+          ],
+          "min": 1,
+          "max": 9
+        },
+        {
+          "key": "set_target",
+          "label": "Points needed to win one",
+          "type": "number",
+          "default": "21",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SETS"
+          ],
+          "min": 1,
+          "max": 99
+        },
+        {
+          "key": "set_win_by",
+          "label": "Must lead by at least",
+          "type": "number",
+          "default": "2",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SETS"
+          ],
+          "min": 1,
+          "max": 5
+        },
+        {
+          "key": "set_cap",
+          "label": "Highest score (0 = no limit)",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SETS"
+          ],
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "deciding_target",
+          "label": "Points in the deciding one (0 = same)",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "SETS"
+          ],
+          "min": 0,
+          "max": 99
+        },
+        {
+          "key": "distance_m",
+          "label": "Distance in metres",
+          "type": "number",
+          "default": "100",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "TIMED"
+          ],
+          "min": 1,
+          "max": 50000
+        },
+        {
+          "key": "attempts",
+          "label": "Attempts for every participant",
+          "type": "number",
+          "default": "3",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "MEASURED"
+          ],
+          "min": 1,
+          "max": 6
+        },
+        {
+          "key": "unit",
+          "label": "Unit of measurement",
+          "type": "text",
+          "default": "metres",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "MEASURED"
+          ]
+        },
+        {
+          "key": "overs",
+          "label": "Overs per innings",
+          "type": "number",
+          "default": "10",
+          "showIfKey": "engine",
+          "showIfValues": [
+            "CRICKET"
+          ],
+          "min": 1,
+          "max": 50
+        },
+        {
+          "key": "format",
+          "label": "Tournament format",
+          "type": "choice",
+          "default": "League",
+          "options": [
+            "League",
+            "Knockout"
+          ]
+        },
+        {
+          "key": "pts_win",
+          "label": "League points for a win",
+          "type": "number",
+          "default": "3",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_draw",
+          "label": "League points for a draw or tie",
+          "type": "number",
+          "default": "1",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "pts_loss",
+          "label": "League points for a loss",
+          "type": "number",
+          "default": "0",
+          "showIfKey": "format",
+          "showIfValues": [
+            "League",
+            "Round-robin",
+            "Swiss"
+          ],
+          "min": 0,
+          "max": 10
+        },
+        {
+          "key": "medals",
+          "label": "Medals awarded",
+          "type": "choice",
+          "default": "Gold, Silver and Bronze",
+          "options": [
+            "Gold, Silver and Bronze",
+            "Gold and Silver",
+            "Gold only",
+            "No medals"
+          ]
+        }
+      ],
+      "presets": []
+    }
+  ]
+}

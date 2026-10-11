@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/toolbar" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="20dp">
+
+            <TextView
+                android:id="@+id/tvCategoryName"
+                style="@style/Arena.PageTitle"
+                android:text="Category" />
+
+            <TextView
+                android:id="@+id/tvCategoryInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/bg_card_grey"
+                android:lineSpacingExtra="6dp"
+                android:padding="16dp"
+                android:text="Details"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <include
+                android:id="@+id/btnTeams"
+                layout="@layout/item_link_card" />
+
+            <include
+                android:id="@+id/btnFixtures"
+                layout="@layout/item_link_card" />
+
+            <include
+                android:id="@+id/btnStandings"
+                layout="@layout/item_link_card" />
+
+            <Button
+                android:id="@+id/btnEditCategory"
+                style="@style/Widget.Arena.Button.Soft"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Edit category settings"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnDeleteCategory"
+                style="@style/Widget.Arena.Button.Danger"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Delete category"
+                android:visibility="gone" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

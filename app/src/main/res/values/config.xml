@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        FIRST FACULTY ACCOUNT
+        Write the email address of the faculty member who will be the first Super Admin
+        between the tags below, then rebuild the app. Only this address can be used on the
+        "Set up the first Faculty account" screen, and only while no Faculty account exists.
+        Leave it empty and that screen refuses to create an account.
+
+        Debug builds use the development value in app/src/debug/res/values/config.xml
+        instead of this one.
+    -->
+    <string name="faculty_email" translatable="false"></string>
+
+    <!-- Development accounts and sample sports/fixtures. Off here, on in debug builds. -->
+    <bool name="seed_dev_data">false</bool>
+</resources>

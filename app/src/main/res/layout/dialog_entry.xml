@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A small form for one entrant of a race or throwing event: a list, one value and a
+     tick box. Rows that are not needed are hidden. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp">
+
+    <TextView
+        android:id="@+id/tvEntryChoiceLabel"
+        style="@style/Arena.Label"
+        android:text="Choose" />
+
+    <Spinner
+        android:id="@+id/spEntryChoice"
+        android:layout_width="match_parent"
+        android:layout_height="50dp" />
+
+    <TextView
+        android:id="@+id/tvEntryValueLabel"
+        style="@style/Arena.Label"
+        android:text="Value" />
+
+    <EditText
+        android:id="@+id/etEntryValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="text"
+        android:maxLines="1" />
+
+    <CheckBox
+        android:id="@+id/cbEntryFoul"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Foul: this attempt does not count" />
+</LinearLayout>

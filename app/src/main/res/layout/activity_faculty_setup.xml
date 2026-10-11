@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <include layout="@layout/toolbar" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="16dp">
+
+            <TextView
+                style="@style/Arena.Body"
+                android:text="This screen creates the first Faculty (Super Admin) account. It works once, and only for the Faculty email written into the app's configuration. After that, more Faculty accounts can be added only by Faculty." />
+
+            <TextView
+                android:id="@+id/tvSetupStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_banner"
+                android:lineSpacingExtra="3dp"
+                android:padding="12dp"
+                android:textColor="@color/banner_text"
+                android:textSize="12sp" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Full name" />
+
+            <EditText
+                android:id="@+id/etFacultyName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter your name"
+                android:inputType="textPersonName|textCapWords" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Authorised Faculty email" />
+
+            <EditText
+                android:id="@+id/etFacultyEmail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter the authorised email"
+                android:inputType="textEmailAddress" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Choose a password" />
+
+            <EditText
+                android:id="@+id/etFacultyPassword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="At least 8 characters"
+                android:inputType="textPassword" />
+
+            <TextView
+                style="@style/Arena.Label"
+                android:text="Repeat the password" />
+
+            <EditText
+                android:id="@+id/etFacultyPasswordAgain"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Enter it again"
+                android:inputType="textPassword" />
+        </LinearLayout>
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btnCreateFaculty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="12dp"
+        android:text="Create Faculty account" />
+</LinearLayout>
