@@ -32,6 +32,8 @@ public final class StandingsCalculator {
             StandingRow row = new StandingRow();
             row.registrationId = team.id;
             row.name = team.name;
+            // A team is named after its branch and year; an individual is not.
+            row.detail = category.isTeam() ? "" : team.branchLine();
             rows.put(team.id, row);
         }
 

@@ -476,7 +476,11 @@ public class SqliteArenaRepository implements ArenaRepository {
         } else {
             cv.put("branch_id", branchId);
         }
-        db.update("users", cv, "id = ?", new String[]{userId});
+        try {
+            db.update("users", cv, "id = ?", new String[]{userId});
+        } catch (android.database.sqlite.SQLiteConstraintException e) {
+            throw new ValidationException(BRANCH_HAS_CR);
+        }
         audit(actor, "ACCOUNT_UPDATED", name + ": " + Role.label(target.role)
                 + (roleChanges ? " changed to " + Role.label(role) : " details edited"));
     }
@@ -514,7 +518,11 @@ public class SqliteArenaRepository implements ArenaRepository {
         }
         ContentValues cv = new ContentValues();
         cv.put("active", active ? 1 : 0);
-        db.update("users", cv, "id = ?", new String[]{userId});
+        try {
+            db.update("users", cv, "id = ?", new String[]{userId});
+        } catch (android.database.sqlite.SQLiteConstraintException e) {
+            throw new ValidationException(BRANCH_HAS_CR);
+        }
         if (!active) {
             // A deactivated account is signed out at once.
             endSessions(db, "user_id = ?", END_DEACTIVATED, userId);
@@ -643,9 +651,17 @@ public class SqliteArenaRepository implements ArenaRepository {
         if (branchId != null) {
             cv.put("branch_id", branchId);
         }
-        db.insertOrThrow("users", null, cv);
+        try {
+            db.insertOrThrow("users", null, cv);
+        } catch (android.database.sqlite.SQLiteConstraintException e) {
+            // Two people appointing a Branch CR for one branch at the same moment:
+            // the database rule lets only the first one through.
+            throw new ValidationException(BRANCH_HAS_CR);
+        }
         return id;
     }
+
+    private static final String BRANCH_HAS_CR = "This branch already has an active Branch CR. Deactivate or reassign that Branch CR first.";
 
     // =====================================================================
     // Branches, settings and the administrative log
@@ -1183,6 +1199,37 @@ public class SqliteArenaRepository implements ArenaRepository {
                     + ") has passed. Extend the deadline in the category settings first.");
         }
 
+        // Limits of the category. Rejected registrations never count. They are checked
+        // for a new entry and when an entry moves to another branch or year, so an
+        // existing entry can always be corrected.
+        RuleSet limits = category.ruleSet();
+        boolean placeChanged = branchChanged || existing.year != registration.year;
+        if (category.isTeam() && placeChanged) {
+            int allowed = Math.max(1, limits.getInt(RuleSet.TEAMS_PER_BRANCH, 1));
+            int entered = count(db, "registrations", "category_id = ? AND branch_id = ? "
+                            + "AND year = ? AND status <> 'REJECTED' AND id <> ?", category.id,
+                    branch.id, String.valueOf(registration.year), id);
+            if (entered >= allowed) {
+                throw new ValidationException(allowed == 1
+                        ? branch.name + " already has a team for Year " + registration.year
+                        + " in this category, and the category allows one team per branch "
+                        + "and year."
+                        : branch.name + " already has " + entered + " teams for Year "
+                        + registration.year + " in this category, which is the most the "
+                        + "category allows.");
+            }
+            if (entered > 0 && label.isEmpty()) {
+                throw new ValidationException("This is an additional team of " + branch.name
+                        + ". Give it a label such as \"Team B\".");
+            }
+        }
+        int capacity = Math.max(0, limits.getInt(RuleSet.MAX_ENTRIES, 0));
+        if (isNew && capacity > 0 && count(db, "registrations",
+                "category_id = ? AND status <> 'REJECTED'", category.id) >= capacity) {
+            throw new ValidationException("This category is full: it accepts " + capacity
+                    + " entries.");
+        }
+
         ContentValues cv = new ContentValues();
         cv.put("name", name);
         cv.put("branch_id", branch.id);
@@ -1197,7 +1244,12 @@ public class SqliteArenaRepository implements ArenaRepository {
             cv.put("category_id", category.id);
             cv.put("status", Registration.STATUS_PENDING);
             cv.put("created_at", System.currentTimeMillis());
-            db.insertOrThrow("registrations", null, cv);
+            try {
+                db.insertOrThrow("registrations", null, cv);
+            } catch (android.database.sqlite.SQLiteConstraintException e) {
+                throw new ValidationException("\"" + name + "\" is already registered in "
+                        + "this category.");
+            }
         } else {
             // A captain who edits a rejected registration is submitting it again.
             if (AccessControl.isCaptain(actor)

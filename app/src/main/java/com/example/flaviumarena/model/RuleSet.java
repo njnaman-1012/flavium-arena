@@ -22,6 +22,10 @@ public class RuleSet {
     public static final String TEAM_MIN = "team_min";
     public static final String TEAM_MAX = "team_max";
     public static final String FORMAT = "format";
+    /** How many teams one branch may enter for the same academic year. */
+    public static final String TEAMS_PER_BRANCH = "teams_per_branch";
+    /** Most entries the category accepts; 0 means no limit. */
+    public static final String MAX_ENTRIES = "max_entries";
     public static final String PTS_WIN = "pts_win";
     public static final String PTS_DRAW = "pts_draw";
     public static final String PTS_LOSS = "pts_loss";

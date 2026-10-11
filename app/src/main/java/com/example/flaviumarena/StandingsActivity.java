@@ -199,8 +199,9 @@ public class StandingsActivity extends BaseActivity {
         addTableLine(rows, "", "", headingsFor(engine), headingsFor(engine), true);
         int place = 1;
         for (StandingRow s : table) {
-            addTableLine(rows, String.valueOf(place), s.name, headingsFor(engine),
-                    valuesFor(engine, s), false);
+            addTableLine(rows, String.valueOf(place),
+                    s.detail.isEmpty() ? s.name : s.name + "\n" + s.detail,
+                    headingsFor(engine), valuesFor(engine, s), false);
             place++;
         }
     }

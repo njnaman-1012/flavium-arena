@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
 import com.example.flaviumarena.model.RuleField;
+import com.example.flaviumarena.model.RuleSet;
 import com.example.flaviumarena.model.SportTemplate;
 
 import org.json.JSONArray;
@@ -100,6 +101,37 @@ public final class TemplateStore {
         }
     }
 
+    /**
+     * Two questions that every sport has, so they are added here instead of being
+     * repeated in each template: how many teams a branch may enter, and how many
+     * entries the category accepts.
+     */
+    private static void addRegistrationLimits(SportTemplate t) {
+        if (t.field(RuleSet.TEAMS_PER_BRANCH) == null) {
+            RuleField teams = new RuleField();
+            teams.key = RuleSet.TEAMS_PER_BRANCH;
+            teams.label = "Teams one branch may enter per year";
+            teams.type = RuleField.TYPE_NUMBER;
+            teams.defaultValue = "1";
+            teams.hint = "Team events only. With more than 1, extra teams need a label "
+                    + "such as Team B.";
+            teams.min = 1;
+            teams.max = 10;
+            t.fields.add(teams);
+        }
+        if (t.field(RuleSet.MAX_ENTRIES) == null) {
+            RuleField capacity = new RuleField();
+            capacity.key = RuleSet.MAX_ENTRIES;
+            capacity.label = "Most entries accepted (0 = no limit)";
+            capacity.type = RuleField.TYPE_NUMBER;
+            capacity.defaultValue = "0";
+            capacity.hint = "Rejected registrations do not count.";
+            capacity.min = 0;
+            capacity.max = 500;
+            t.fields.add(capacity);
+        }
+    }
+
     /** Turns the stored JSON text of one template into objects. */
     static SportTemplate parse(String json) {
         try {
@@ -149,6 +181,7 @@ public final class TemplateStore {
                 }
                 t.presets.add(preset);
             }
+            addRegistrationLimits(t);
             return t;
         } catch (JSONException e) {
             throw new IllegalStateException("A sport template is damaged", e);

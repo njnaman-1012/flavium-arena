@@ -197,18 +197,19 @@ public final class PermissionSelfTest {
 
         // ================= Branch Captain: own branch only =================
         final String[] team = new String[1];
-        allowed("Branch CR can register a second team for their own branch", () -> team[0] =
-                repo.saveRegistration(captain, teamEntry(sevens.id, captain.branchId, 3,
-                        "Team B")));
-        rejected("Two teams of one branch and year need different labels",
+        allowed("Branch CR can register another year of their own branch", () -> team[0] =
+                repo.saveRegistration(captain, teamEntry(sevens.id, captain.branchId, 2,
+                        "")));
+        rejected("A second team for the same branch and year is refused unless the "
+                        + "category allows more than one",
                 ValidationException.class, () -> repo.saveRegistration(captain,
-                        teamEntry(sevens.id, captain.branchId, 3, "")));
+                        teamEntry(sevens.id, captain.branchId, 3, "Team B")));
         denied("Branch CR cannot register a team for another branch",
                 () -> repo.saveRegistration(captain,
                         teamEntry(sevens.id, freeBranch.id, 3, "")));
         check("The team name is built from branch, year and label", () -> {
             Registration saved = repo.getRegistration(captain, team[0]);
-            String expected = DevData.CAPTAIN_BRANCH + " \u2014 Year 3 (Team B)";
+            String expected = DevData.CAPTAIN_BRANCH + " \u2014 Year 2";
             if (!expected.equals(saved.name)) {
                 throw new ValidationException("Name was " + saved.name);
             }
@@ -527,7 +528,7 @@ public final class PermissionSelfTest {
                 branch(captain.branchId, "Computer Science and Engineering", "CSE")));
         check("Renaming a branch renames its teams", () -> {
             String name = repo.getRegistration(faculty, team[0]).name;
-            if (!name.startsWith("Computer Science and Engineering \u2014 Year 3")) {
+            if (!name.startsWith("Computer Science and Engineering \u2014 Year 2")) {
                 throw new ValidationException("Team name was " + name);
             }
         });

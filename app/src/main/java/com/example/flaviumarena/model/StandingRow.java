@@ -4,6 +4,8 @@ package com.example.flaviumarena.model;
 public class StandingRow {
     public String registrationId;
     public String name;
+    /** For an individual: the branch and year they represent. Empty for a team. */
+    public String detail = "";
     public int played;
     public int won;
     public int drawn;
