@@ -55,6 +55,7 @@ public class LoginActivity extends BaseActivity {
         findViewById(R.id.btnLogin).setOnClickListener(v -> login());
         findViewById(R.id.btnChangeRole).setOnClickListener(v -> showRoles());
         findViewById(R.id.btnFillDev).setOnClickListener(v -> fillDevAccount());
+        findViewById(R.id.btnRepairDev).setOnClickListener(v -> repairDevAccount());
 
         // Back from the form returns to the role cards instead of closing the screen.
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -116,10 +117,31 @@ public class LoginActivity extends BaseActivity {
 
     private void fillDevAccount() {
         String[] account = DevData.account(chosenRole);
-        if (account != null) {
-            etEmail.setText(account[0]);
-            etPassword.setText(account[1]);
+        if (account == null) {
+            return;
         }
+        etEmail.setText(account[0]);
+        etPassword.setText(account[1]);
+        // A database that was upgraded from an older version of the app may not have
+        // this account: say so now instead of letting the login fail without a reason.
+        if (!DevData.exists(this, chosenRole)) {
+            showMessage("This development account is not in the database of this device. "
+                    + "Tap \"Create or repair this development account\" first.");
+        }
+    }
+
+    /** Debug builds only: adds the development account, or makes it usable again. */
+    private void repairDevAccount() {
+        String role = chosenRole;
+        showDialog("Create the development " + Role.label(role) + " account, or reset its "
+                        + "password and reactivate it if it already exists? No other data "
+                        + "is changed.", R.drawable.ic_info, false, "Continue", "Cancel", () -> {
+                    final String[] done = new String[1];
+                    if (attempt(() -> done[0] = DevData.createOrRepair(this, role))) {
+                        fillDevAccount();
+                        showMessage(done[0]);
+                    }
+                });
     }
 
     private void login() {

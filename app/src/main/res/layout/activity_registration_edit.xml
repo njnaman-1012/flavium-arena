@@ -100,7 +100,7 @@
 
             <TextView
                 style="@style/Arena.Label"
-                android:text="Captain or contact person" />
+                android:text="Team captain or contact person" />
 
             <EditText
                 android:id="@+id/etContactName"

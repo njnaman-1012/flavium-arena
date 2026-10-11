@@ -95,7 +95,7 @@ public final class PermissionSelfTest {
                 DevData.CORE_EMAIL, DevData.CORE_PASSWORD, Role.FACULTY));
         denied("Choosing Core Login with an Asoo Core account is refused", () -> repo.login(
                 DevData.ASOO_EMAIL, DevData.ASOO_PASSWORD, Role.CORE));
-        denied("Choosing Core Login with a Branch Captain account is refused",
+        denied("Choosing Core Login with a Branch CR account is refused",
                 () -> repo.login(DevData.CAPTAIN_EMAIL, DevData.CAPTAIN_PASSWORD, Role.CORE));
         rejected("A wrong password is refused", ValidationException.class,
                 () -> repo.login(DevData.CORE_EMAIL, "not-the-password", Role.CORE));
@@ -165,31 +165,31 @@ public final class PermissionSelfTest {
         });
 
         // ================= Branch Captain =================
-        check("A captain account carries its branch", () -> {
+        check("A Branch CR account carries its branch", () -> {
             if (!DevData.CAPTAIN_BRANCH.equals(captain.branchName)) {
                 throw new ValidationException("Branch was " + captain.branchName);
             }
         });
-        denied("Captain cannot add a sport", () -> repo.saveSport(captain, sport("Kabaddi")));
-        denied("Captain cannot approve a registration", () -> repo.setRegistrationStatus(
+        denied("Branch CR cannot add a sport", () -> repo.saveSport(captain, sport("Kabaddi")));
+        denied("Branch CR cannot approve a registration", () -> repo.setRegistrationStatus(
                 captain, pending.id, Registration.STATUS_APPROVED));
-        denied("Captain cannot create a fixture",
+        denied("Branch CR cannot create a fixture",
                 () -> repo.saveFixture(captain, copyAsNew(unassigned)));
-        denied("Captain cannot update a score", () -> repo.updateScore(captain, assigned.id,
+        denied("Branch CR cannot update a score", () -> repo.updateScore(captain, assigned.id,
                 assigned.version, 1, 1, "", Match.STATUS_LIVE));
-        denied("Captain cannot list accounts", () -> repo.getUsers(captain));
-        denied("Captain cannot move themselves to another branch", () -> repo.updateUser(
+        denied("Branch CR cannot list accounts", () -> repo.getUsers(captain));
+        denied("Branch CR cannot move themselves to another branch", () -> repo.updateUser(
                 captain, captain.id, captain.name, captain.email, Role.CAPTAIN, freeBranch.id));
 
         // ================= Branch Captain: own branch only =================
         final String[] team = new String[1];
-        allowed("Captain can register a second team for their own branch", () -> team[0] =
+        allowed("Branch CR can register a second team for their own branch", () -> team[0] =
                 repo.saveRegistration(captain, teamEntry(sevens.id, captain.branchId, 3,
                         "Team B")));
         rejected("Two teams of one branch and year need different labels",
                 ValidationException.class, () -> repo.saveRegistration(captain,
                         teamEntry(sevens.id, captain.branchId, 3, "")));
-        denied("Captain cannot register a team for another branch",
+        denied("Branch CR cannot register a team for another branch",
                 () -> repo.saveRegistration(captain,
                         teamEntry(sevens.id, freeBranch.id, 3, "")));
         check("The team name is built from branch, year and label", () -> {
@@ -199,7 +199,7 @@ public final class PermissionSelfTest {
                 throw new ValidationException("Name was " + saved.name);
             }
             if (!Registration.STATUS_PENDING.equals(saved.status)) {
-                throw new ValidationException("A captain's entry must start as PENDING.");
+                throw new ValidationException("A Branch CR's entry must start as PENDING.");
             }
         });
         check("The public cannot see a team that is waiting for approval", () -> {
@@ -207,7 +207,7 @@ public final class PermissionSelfTest {
                 throw new ValidationException("The pending team was visible to the public.");
             }
         });
-        check("Captain sees pending entries of their own branch but not of others", () -> {
+        check("Branch CR sees pending entries of their own branch but not of others", () -> {
             boolean own = false;
             for (Registration r : repo.getRegistrations(captain, sevens.id)) {
                 own |= r.id.equals(team[0]);
@@ -219,30 +219,30 @@ public final class PermissionSelfTest {
                 }
             }
             if (!own) {
-                throw new ValidationException("The captain's own pending team was missing.");
+                throw new ValidationException("The Branch CR's own pending team was missing.");
             }
         });
-        denied("Captain cannot approve their own team", () -> repo.setRegistrationStatus(
+        denied("Branch CR cannot approve their own team", () -> repo.setRegistrationStatus(
                 captain, team[0], Registration.STATUS_APPROVED));
-        allowed("Captain can edit their team before it is approved", () -> {
+        allowed("Branch CR can edit their team before it is approved", () -> {
             Registration mine = repo.getRegistration(captain, team[0]);
             mine.teamLabel = "Team C";
             repo.saveRegistration(captain, mine);
         });
-        denied("Captain cannot edit another branch's registration",
+        denied("Branch CR cannot edit another branch's registration",
                 () -> repo.saveRegistration(captain, pending));
-        denied("Captain cannot delete another branch's registration",
+        denied("Branch CR cannot delete another branch's registration",
                 () -> repo.deleteRegistration(captain, pending.id));
-        denied("Captain cannot change another branch's logo",
+        denied("Branch CR cannot change another branch's logo",
                 () -> repo.setRegistrationLogo(captain, pending.id, ""));
-        allowed("Core approves the captain's team", () -> repo.setRegistrationStatus(core,
+        allowed("Core approves the Branch CR's team", () -> repo.setRegistrationStatus(core,
                 team[0], Registration.STATUS_APPROVED));
-        denied("Captain cannot edit a team after it has been approved", () -> {
+        denied("Branch CR cannot edit a team after it has been approved", () -> {
             Registration mine = repo.getRegistration(captain, team[0]);
             mine.teamLabel = "Team D";
             repo.saveRegistration(captain, mine);
         });
-        allowed("Captain can still change the logo of an approved team",
+        allowed("Branch CR can still change the logo of an approved team",
                 () -> repo.setRegistrationLogo(captain, team[0], ""));
         rejected("The academic year must be 1 to 4", ValidationException.class,
                 () -> repo.saveRegistration(core, teamEntry(sevens.id, freeBranch.id, 7, "")));
@@ -301,7 +301,7 @@ public final class PermissionSelfTest {
 
         // ================= Sport catalogue and category rules =================
         final String[] catalogue = new String[2];
-        denied("Captain cannot add a sport from the catalogue",
+        denied("Branch CR cannot add a sport from the catalogue",
                 () -> repo.addSportFromTemplate(captain, "volleyball", null, null));
         denied("Asoo Core cannot add a sport from the catalogue",
                 () -> repo.addSportFromTemplate(asoo, "volleyball", null, null));
@@ -410,20 +410,20 @@ public final class PermissionSelfTest {
         });
 
         // ================= Captain appointments =================
-        allowed("Core can appoint a captain while Faculty allows it", () -> accounts[1] =
+        allowed("Core can appoint a Branch CR while Faculty allows it", () -> accounts[1] =
                 repo.createUser(core, "New Captain", "newcaptain@flavium.test", TEST_PASSWORD,
                         Role.CAPTAIN, freeBranch.id));
-        rejected("A branch cannot have two active captains", ValidationException.class,
+        rejected("A branch cannot have two active Branch CRs", ValidationException.class,
                 () -> repo.createUser(core, "Second Captain", "captain2@flavium.test",
                         TEST_PASSWORD, Role.CAPTAIN, freeBranch.id));
-        rejected("A captain must be given a branch", ValidationException.class,
+        rejected("A Branch CR must be given a branch", ValidationException.class,
                 () -> repo.createUser(core, "No Branch", "nobranch@flavium.test",
                         TEST_PASSWORD, Role.CAPTAIN, null));
-        allowed("Faculty can switch off captain appointments by Cores",
+        allowed("Faculty can switch off Branch CR appointments by Cores",
                 () -> repo.setFlag(faculty, AppSettings.CORE_CAN_APPOINT_CAPTAINS, false));
-        denied("Core cannot change a captain once Faculty has switched that off",
+        denied("Core cannot change a Branch CR once Faculty has switched that off",
                 () -> repo.setUserActive(core, accounts[1], false));
-        allowed("Faculty can still deactivate that captain",
+        allowed("Faculty can still deactivate that Branch CR",
                 () -> repo.setUserActive(faculty, accounts[1], false));
 
         // ================= Finalising results =================
@@ -492,7 +492,7 @@ public final class PermissionSelfTest {
         final String[] branchId = new String[1];
         denied("Core cannot add a branch",
                 () -> repo.saveBranch(core, branch(null, "Architecture", "ARCH")));
-        denied("Captain cannot add a branch",
+        denied("Branch CR cannot add a branch",
                 () -> repo.saveBranch(captain, branch(null, "Architecture", "ARCH")));
         allowed("Faculty can add a branch",
                 () -> branchId[0] = repo.saveBranch(faculty, branch(null, "Architecture", "ARCH")));
@@ -506,7 +506,7 @@ public final class PermissionSelfTest {
                     r.branchId = branchId[0];
                     repo.saveRegistration(core, r);
                 });
-        rejected("A branch with an active captain cannot be deactivated",
+        rejected("A branch with an active Branch CR cannot be deactivated",
                 ValidationException.class,
                 () -> repo.setBranchActive(faculty, captain.branchId, false));
         allowed("Faculty can rename a branch", () -> repo.saveBranch(faculty,

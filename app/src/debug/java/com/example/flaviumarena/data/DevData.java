@@ -1,6 +1,8 @@
 package com.example.flaviumarena.data;
 
 import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
 import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 
@@ -19,6 +21,7 @@ import java.util.UUID;
  * class of the same name in app/src/release).
  *
  * It provides three development accounts and some sample sports, teams and fixtures.
+ * The accounts can also be created or repaired later, see createOrRepair.
  * There is deliberately no development Faculty account: Faculty is always created
  * through the first-Faculty set-up screen.
  */
@@ -52,6 +55,122 @@ public final class DevData {
             return new String[]{CAPTAIN_EMAIL, CAPTAIN_PASSWORD};
         }
         return null;
+    }
+
+    private static String nameOf(String role) {
+        return Role.CORE.equals(role) ? "Test Core"
+                : Role.ASOO_CORE.equals(role) ? "Test Asoo Core" : "Test Captain";
+    }
+
+    /** True when the development account of this role is in the database of this device. */
+    public static boolean exists(Context context, String role) {
+        String[] account = account(role);
+        return account != null && DatabaseUtils.queryNumEntries(
+                RepositoryProvider.helper(context).getReadableDatabase(), "users",
+                "email = ?", new String[]{account[0]}) > 0;
+    }
+
+    /**
+     * Creates the development account of a role, or puts an existing one back in working
+     * order: active, right role, known password, not locked. Nothing else in the database
+     * is touched. Returns a sentence that says what was done.
+     *
+     * Why this is needed: the development accounts are inserted when a database is first
+     * created. A database that was created by an older version of the app and upgraded
+     * since then never received the accounts that were added later.
+     *
+     * This runs only when the button on the login screen of a debug build is pressed.
+     */
+    public static String createOrRepair(Context context, String role) {
+        String[] account = account(role);
+        if (account == null) {
+            throw new ValidationException("There is no development account for this role.");
+        }
+        SQLiteDatabase db = RepositoryProvider.helper(context).getWritableDatabase();
+        db.beginTransaction();
+        try {
+            String id = null;
+            String branchId = null;
+            Cursor c = db.rawQuery("SELECT id, branch_id FROM users WHERE email = ?",
+                    new String[]{account[0]});
+            try {
+                if (c.moveToFirst()) {
+                    id = c.getString(0);
+                    branchId = c.isNull(1) ? null : c.getString(1);
+                }
+            } finally {
+                c.close();
+            }
+            boolean created = id == null;
+            if (created) {
+                id = newId();
+            }
+            if (Role.CAPTAIN.equals(role)) {
+                branchId = branchFor(db, id, branchId);
+            } else {
+                branchId = null;
+            }
+
+            String salt = PasswordUtil.newSalt();
+            ContentValues cv = new ContentValues();
+            cv.put("salt", salt);
+            cv.put("password_hash", PasswordUtil.hash(account[1], salt));
+            cv.put("role", role);
+            cv.put("active", 1);
+            cv.put("failed_logins", 0);
+            cv.put("locked_until", 0);
+            if (branchId == null) {
+                cv.putNull("branch_id");
+            } else {
+                cv.put("branch_id", branchId);
+            }
+            if (created) {
+                cv.put("id", id);
+                cv.put("name", nameOf(role));
+                cv.put("email", account[0]);
+                db.insertOrThrow("users", null, cv);
+            } else {
+                db.update("users", cv, "id = ?", new String[]{id});
+            }
+            String what = (created ? "Created" : "Repaired") + " the development "
+                    + Role.label(role) + " account " + account[0];
+            if (branchId != null) {
+                what += " for " + DatabaseUtils.stringForQuery(db,
+                        "SELECT name FROM branches WHERE id = ?", new String[]{branchId});
+            }
+            DbHelper.writeAdminAudit(db, null, "Development build", "DEV_ACCOUNT", what + ".");
+            db.setTransactionSuccessful();
+            return what + ".";
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    /**
+     * The branch of the development Branch CR. A branch has one active Branch CR, so the
+     * account keeps its branch when that is still valid, and otherwise gets an active
+     * branch that has none (the usual development branch if it is free).
+     */
+    private static String branchFor(SQLiteDatabase db, String userId, String current) {
+        String free = "b.active = 1 AND NOT EXISTS (SELECT 1 FROM users u "
+                + "WHERE u.branch_id = b.id AND u.role = 'CAPTAIN' AND u.active = 1 "
+                + "AND u.id <> ?)";
+        if (current != null && DatabaseUtils.queryNumEntries(db, "branches b",
+                "b.id = ? AND " + free, new String[]{current, userId}) > 0) {
+            return current;
+        }
+        Cursor c = db.rawQuery("SELECT b.id FROM branches b WHERE " + free
+                + " ORDER BY b.name = ? DESC, b.name LIMIT 1", new String[]{userId, CAPTAIN_BRANCH});
+        try {
+            if (c.moveToFirst()) {
+                return c.getString(0);
+            }
+        } finally {
+            c.close();
+        }
+        throw new ValidationException("Every active branch already has a Branch CR, so the "
+                + "development account has no branch to manage. Add a branch or deactivate "
+                + "one Branch CR first.");
     }
 
     public static void insert(SQLiteDatabase db) {

@@ -44,14 +44,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="18dp"
-                android:text="Cores may appoint Branch Captains"
+                android:text="Cores may appoint Branch CRs"
                 android:textColor="@color/text_primary"
                 android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
                 style="@style/Arena.Body"
-                android:text="When off, only Faculty can add, change, deactivate or remove captain accounts." />
+                android:text="When off, only Faculty can add, change, deactivate or remove Branch CR accounts." />
 
             <TextView
                 android:layout_width="match_parent"

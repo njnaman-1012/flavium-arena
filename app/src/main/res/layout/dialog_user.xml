@@ -56,7 +56,7 @@
         <TextView
             android:id="@+id/tvUserBranchLabel"
             style="@style/Arena.Label"
-            android:text="Branch this captain manages" />
+            android:text="Branch this Branch CR manages" />
 
         <Spinner
             android:id="@+id/spUserBranch"

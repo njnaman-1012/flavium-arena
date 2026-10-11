@@ -9,14 +9,22 @@ import android.content.Context;
 public final class RepositoryProvider {
 
     private static ArenaRepository instance;
+    private static DbHelper helper;
 
     private RepositoryProvider() {
     }
 
     public static synchronized ArenaRepository get(Context context) {
         if (instance == null) {
-            instance = new SqliteArenaRepository(new DbHelper(context.getApplicationContext()));
+            helper = new DbHelper(context.getApplicationContext());
+            instance = new SqliteArenaRepository(helper);
         }
         return instance;
+    }
+
+    /** The database behind the repository. Only for classes of this package. */
+    static synchronized DbHelper helper(Context context) {
+        get(context);
+        return helper;
     }
 }

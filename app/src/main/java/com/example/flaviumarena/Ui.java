@@ -121,7 +121,7 @@ public final class Ui {
             text.append("\nStatus: ").append(r.status);
         }
         if (team && !r.contactName.isEmpty()) {
-            text.append("\nCaptain: ").append(r.contactName);
+            text.append("\nTeam captain: ").append(r.contactName);
         }
         if (!r.contactPhone.isEmpty()) {
             text.append("\nPhone: ").append(r.contactPhone);

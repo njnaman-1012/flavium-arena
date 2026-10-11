@@ -230,7 +230,7 @@ public class HomeFragment extends BaseFragment {
             tvAction.setText("Open my matches");
             card.setOnClickListener(v -> openMatches(false, true));
         } else if (AccessControl.isCaptain(user())) {
-            tvText.setText("You are the captain of " + user().branchName
+            tvText.setText("You are the Branch CR of " + user().branchName
                     + ". Register your teams and follow their fixtures.");
             tvAction.setText("Manage my branch");
             card.setOnClickListener(v -> {

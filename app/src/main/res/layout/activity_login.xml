@@ -145,6 +145,13 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="Fill in the development account" />
+
+                    <Button
+                        android:id="@+id/btnRepairDev"
+                        style="@style/Widget.Arena.Button.Small"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Create or repair this development account" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>

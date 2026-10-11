@@ -423,7 +423,7 @@ public class SqliteArenaRepository implements ArenaRepository {
             return null;
         }
         if (branchId == null) {
-            throw new ValidationException("Choose the branch this captain manages.");
+            throw new ValidationException("Choose the branch this Branch CR manages.");
         }
         SQLiteDatabase db = helper.getReadableDatabase();
         if (count(db, "branches", "id = ? AND active = 1", branchId) == 0) {
@@ -432,8 +432,8 @@ public class SqliteArenaRepository implements ArenaRepository {
         String ignore = userIdToIgnore == null ? "" : userIdToIgnore;
         if (count(db, "users", "role = ? AND active = 1 AND branch_id = ? AND id <> ?",
                 Role.CAPTAIN, branchId, ignore) > 0) {
-            throw new ValidationException("This branch already has an active captain. "
-                    + "Deactivate or reassign that captain first.");
+            throw new ValidationException("This branch already has an active Branch CR. "
+                    + "Deactivate or reassign that Branch CR first.");
         }
         return branchId;
     }
@@ -1180,8 +1180,8 @@ public class SqliteArenaRepository implements ArenaRepository {
         SQLiteDatabase db = helper.getWritableDatabase();
         if (!active && count(db, "users", "role = ? AND active = 1 AND branch_id = ?",
                 Role.CAPTAIN, id) > 0) {
-            throw new ValidationException("This branch still has an active captain. "
-                    + "Deactivate or reassign the captain first.");
+            throw new ValidationException("This branch still has an active Branch CR. "
+                    + "Deactivate or reassign the Branch CR first.");
         }
         ContentValues cv = new ContentValues();
         cv.put("active", active ? 1 : 0);

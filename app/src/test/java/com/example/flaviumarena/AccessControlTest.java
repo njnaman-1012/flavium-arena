@@ -152,7 +152,7 @@ public class AccessControlTest {
             AccessControl.require(false, captain, "add sports");
             fail("Expected PermissionDeniedException");
         } catch (PermissionDeniedException expected) {
-            assertTrue(expected.getMessage().contains("Branch Captain"));
+            assertTrue(expected.getMessage().contains("Branch CR"));
         }
         try {
             AccessControl.require(false, null, "add sports");
