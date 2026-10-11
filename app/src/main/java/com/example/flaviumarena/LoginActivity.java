@@ -48,6 +48,8 @@ public class LoginActivity extends BaseActivity {
                 "Super admin of the festival");
         setUpRoleCard(R.id.roleCore, R.drawable.ic_trophy, Role.CORE,
                 "Festival administration");
+        setUpRoleCard(R.id.roleCoach, R.drawable.ic_result, Role.COACH,
+                "The sports assigned to you");
         setUpRoleCard(R.id.roleAsoo, R.drawable.ic_live, Role.ASOO_CORE,
                 "Match operations and scoring");
         setUpRoleCard(R.id.roleCaptain, R.drawable.ic_users, Role.CAPTAIN,

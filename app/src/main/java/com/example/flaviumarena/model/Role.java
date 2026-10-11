@@ -1,7 +1,7 @@
 package com.example.flaviumarena.model;
 
 /**
- * The four roles an account can have. They are stored as text in the users table.
+ * The five roles an account can have. They are stored as text in the users table.
  * The stored value of the branch representative is still CAPTAIN; on screen the
  * role is called "Branch CR".
  * There is no viewer role: the public uses the app without an account.
@@ -11,11 +11,14 @@ public final class Role {
     public static final String FACULTY = "FACULTY";
     public static final String CORE = "CORE";
     public static final String ASOO_CORE = "ASOO_CORE";
+    /** Looks after the sports Faculty assigns to them, and nothing else. */
+    public static final String COACH = "COACH";
     public static final String CAPTAIN = "CAPTAIN";
 
     /** Highest authority first. The login screen shows them in this order. */
-    public static final String[] ALL = {FACULTY, CORE, ASOO_CORE, CAPTAIN};
-    public static final String[] LABELS = {"Faculty", "Core", "Asoo Core", "Branch CR"};
+    public static final String[] ALL = {FACULTY, CORE, COACH, ASOO_CORE, CAPTAIN};
+    public static final String[] LABELS = {"Faculty", "Core", "Coach", "Asoo Core",
+            "Branch CR"};
 
     private Role() {
     }

@@ -45,6 +45,10 @@
                     layout="@layout/item_link_card" />
 
                 <include
+                    android:id="@+id/roleCoach"
+                    layout="@layout/item_link_card" />
+
+                <include
                     android:id="@+id/roleCaptain"
                     layout="@layout/item_link_card" />
 

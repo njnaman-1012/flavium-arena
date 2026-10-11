@@ -129,8 +129,8 @@ public class CategoryEditActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (!AccessControl.canManageCategories(currentUser)) {
-            toast("Only Faculty and Cores can change categories.");
+        if (!AccessControl.canManageCategories(userIn(category == null ? null : category.sportId))) {
+            toast("Only Faculty, Cores and the Coach of this sport can change categories.");
             finish();
         }
     }

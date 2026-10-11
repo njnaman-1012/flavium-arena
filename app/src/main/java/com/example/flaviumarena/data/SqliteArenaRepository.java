@@ -88,7 +88,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         Cursor c = query(USER_SELECT + "WHERE u.email = ?", clean(email));
         try {
             if (c.moveToFirst()) {
-                user = readUser(c);
+                user = withSports(readUser(c));
                 salt = text(c, "salt");
                 stored = text(c, "password_hash");
                 lockedUntil = c.getLong(c.getColumnIndexOrThrow("locked_until"));
@@ -358,7 +358,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         }
         Cursor c = query(USER_SELECT + "WHERE u.id = ?", id);
         try {
-            return c.moveToFirst() ? readUser(c) : null;
+            return c.moveToFirst() ? withSports(readUser(c)) : null;
         } finally {
             c.close();
         }
@@ -417,8 +417,8 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public List<User> getAsooCores(User actorArg) {
         User actor = trusted(actorArg);
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor,
-                "view the list of Asoo Cores");
+        AccessControl.require(AccessControl.canManageFixtures(actor)
+                || AccessControl.isCoach(actor), actor, "view the list of Asoo Cores");
         return readUsers(query(USER_SELECT + "WHERE u.role = ? AND u.active = 1 ORDER BY u.name",
                 Role.ASOO_CORE));
     }
@@ -480,6 +480,10 @@ public class SqliteArenaRepository implements ArenaRepository {
             db.update("users", cv, "id = ?", new String[]{userId});
         } catch (android.database.sqlite.SQLiteConstraintException e) {
             throw new ValidationException(BRANCH_HAS_CR);
+        }
+        if (!Role.COACH.equals(role)) {
+            // Someone who is no longer a Coach keeps no sports.
+            db.delete("coach_sports", "user_id = ?", new String[]{userId});
         }
         audit(actor, "ACCOUNT_UPDATED", name + ": " + Role.label(target.role)
                 + (roleChanges ? " changed to " + Role.label(role) : " details edited"));
@@ -551,6 +555,111 @@ public class SqliteArenaRepository implements ArenaRepository {
         }
         db.delete("users", "id = ?", new String[]{userId});
         audit(actor, "ACCOUNT_REMOVED", Role.label(target.role) + " " + target.name);
+    }
+
+    // ----- Coaches -----
+
+    /** Adds the sports of a Coach to the user object. Other roles have none. */
+    private User withSports(User user) {
+        if (user == null || !Role.COACH.equals(user.role)) {
+            return user;
+        }
+        StringBuilder names = new StringBuilder();
+        Cursor c = query("SELECT s.id, s.name FROM coach_sports cs JOIN sports s "
+                + "ON s.id = cs.sport_id WHERE cs.user_id = ? ORDER BY s.name", user.id);
+        try {
+            while (c.moveToNext()) {
+                user.coachSportIds.add(c.getString(0));
+                names.append(names.length() > 0 ? ", " : "").append(c.getString(1));
+            }
+        } finally {
+            c.close();
+        }
+        user.coachSportNames = names.toString();
+        return user;
+    }
+
+    @Override
+    public void setCoachSports(User actorArg, String userId, List<String> sportIds) {
+        User actor = trusted(actorArg);
+        User target = requireUser(userId);
+        requireAccountAuthority(actor, Role.COACH, "assign sports to a Coach");
+        if (!Role.COACH.equals(target.role)) {
+            throw new ValidationException(target.name + " is not a Coach.");
+        }
+        SQLiteDatabase db = helper.getWritableDatabase();
+        List<String> names = new ArrayList<>();
+        for (String sportId : sportIds) {
+            Sport sport = getSport(sportId);
+            if (sport == null) {
+                throw new ValidationException("One of the chosen sports no longer exists.");
+            }
+            names.add(sport.name);
+        }
+        db.beginTransaction();
+        try {
+            db.delete("coach_sports", "user_id = ?", new String[]{userId});
+            for (String sportId : new java.util.LinkedHashSet<>(sportIds)) {
+                ContentValues cv = new ContentValues();
+                cv.put("user_id", userId);
+                cv.put("sport_id", sportId);
+                db.insertOrThrow("coach_sports", null, cv);
+            }
+            DbHelper.writeAdminAudit(db, actor.id, actor.name, "COACH_SPORTS",
+                    "Coach " + target.name + " now looks after: "
+                            + (names.isEmpty() ? "no sports" : android.text.TextUtils.join(", ",
+                            names)));
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    /** The trusted user as they count inside one sport (see AccessControl.inSport). */
+    private User actorIn(User actorArg, String sportId) {
+        return AccessControl.inSport(trusted(actorArg), sportId);
+    }
+
+    private String lookup(String sql, String argument) {
+        if (argument == null) {
+            return null;
+        }
+        Cursor c = query(sql, argument);
+        try {
+            return c.moveToFirst() ? c.getString(0) : null;
+        } finally {
+            c.close();
+        }
+    }
+
+    private String sportOfCategory(String categoryId) {
+        return lookup("SELECT sport_id FROM categories WHERE id = ?", categoryId);
+    }
+
+    private String sportOfRegistration(String registrationId) {
+        return lookup("SELECT c.sport_id FROM registrations r JOIN categories c "
+                + "ON c.id = r.category_id WHERE r.id = ?", registrationId);
+    }
+
+    private String sportOfMatch(String matchId) {
+        return lookup("SELECT c.sport_id FROM matches m JOIN categories c "
+                + "ON c.id = m.category_id WHERE m.id = ?", matchId);
+    }
+
+    private String sportOfMatchEvent(String eventId) {
+        return lookup("SELECT c.sport_id FROM match_events e JOIN matches m ON m.id = e.match_id "
+                + "JOIN categories c ON c.id = m.category_id WHERE e.id = ?", eventId);
+    }
+
+    private String sportOfRound(String roundId) {
+        return lookup("SELECT c.sport_id FROM event_rounds r JOIN categories c "
+                + "ON c.id = r.category_id WHERE r.id = ?", roundId);
+    }
+
+    private String sportOfEntry(String entryId) {
+        return lookup("SELECT c.sport_id FROM event_entries e JOIN event_rounds r "
+                + "ON r.id = e.round_id JOIN categories c ON c.id = r.category_id "
+                + "WHERE e.id = ?", entryId);
     }
 
     // ----- Account helpers -----
@@ -898,7 +1007,8 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public String saveCategory(User actorArg, Category category) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg,
+                category.id == null ? category.sportId : sportOfCategory(category.id));
         AccessControl.require(AccessControl.canManageCategories(actor), actor,
                 "add or edit categories");
 
@@ -1013,7 +1123,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void deleteCategory(User actorArg, String id) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfCategory(id));
         AccessControl.require(AccessControl.canManageCategories(actor), actor,
                 "delete categories");
 
@@ -1034,7 +1144,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     /** A registration with the names of its branch, category and sport. */
     private static final String REG_SELECT =
             "SELECT r.*, b.name AS branch_name, b.code AS branch_code, "
-                    + "c.name AS category_name, s.name AS sport_name "
+                    + "c.name AS category_name, s.name AS sport_name, s.id AS sport_id "
                     + "FROM registrations r "
                     + "LEFT JOIN branches b ON b.id = r.branch_id "
                     + "JOIN categories c ON c.id = r.category_id "
@@ -1073,11 +1183,13 @@ public class SqliteArenaRepository implements ArenaRepository {
      * Decides what one person may see of a registration. This is done here, in the data
      * layer, so no screen can show more by mistake.
      *   Faculty, Core, Asoo Core: everything.
+     *   A Coach: everything in the sports assigned to them; the public view elsewhere.
      *   A captain: everything about their own branch; the public view of other branches.
      *   The public: approved registrations only, without the phone number.
      */
     private static Registration forViewer(User actor, Registration r) {
-        if (AccessControl.canViewPrivateRegistrationData(actor, r.branchId)) {
+        if (AccessControl.canViewPrivateRegistrationData(
+                AccessControl.inSport(actor, r.sportId), r.branchId)) {
             return r;
         }
         if (!r.isApproved()) {
@@ -1108,7 +1220,8 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public String saveRegistration(User actorArg, Registration registration) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg,
+                registration.id == null ? sportOfCategory(registration.categoryId) : sportOfRegistration(registration.id));
         boolean isNew = registration.id == null;
         Registration existing = isNew ? null : rawRegistration(registration.id);
         if (!isNew && existing == null) {
@@ -1263,7 +1376,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void setRegistrationLogo(User actorArg, String id, String logoPath) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRegistration(id));
         Registration existing = rawRegistration(id);
         if (existing == null) {
             throw new ValidationException("This registration no longer exists.");
@@ -1277,7 +1390,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void setRegistrationStatus(User actorArg, String id, String status) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRegistration(id));
         AccessControl.require(AccessControl.canManageRegistrations(actor), actor,
                 "approve or reject registrations");
 
@@ -1298,7 +1411,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void deleteRegistration(User actorArg, String id) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRegistration(id));
         Registration existing = rawRegistration(id);
         if (existing == null) {
             throw new ValidationException("This registration no longer exists.");
@@ -1430,7 +1543,7 @@ public class SqliteArenaRepository implements ArenaRepository {
                     + "c.type AS category_type, c.engine AS category_engine, "
                     + "c.rules AS category_rules, "
                     + "c.name AS category_name, c.format AS category_format, "
-                    + "s.name AS sport_name, ua.name AS assigned_name, "
+                    + "s.name AS sport_name, s.id AS sport_id, ua.name AS assigned_name, "
                     + "ub.name AS updated_by_name "
                     + "FROM matches m "
                     + "JOIN registrations ra ON ra.id = m.team_a_id "
@@ -1494,10 +1607,16 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public String saveFixture(User actorArg, Match match) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg,
+                match.id == null ? sportOfCategory(match.categoryId) : sportOfMatch(match.id));
         AccessControl.require(AccessControl.canManageFixtures(actor), actor,
                 "create or edit fixtures");
 
+        // An existing fixture stays in its category, whatever the screen sent.
+        Match storedFixture = match.id == null ? null : getMatch(match.id);
+        if (storedFixture != null) {
+            match.categoryId = storedFixture.categoryId;
+        }
         Category category = getCategory(match.categoryId);
         if (category == null) {
             throw new ValidationException("The category of this fixture no longer exists.");
@@ -1609,7 +1728,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void deleteFixture(User actorArg, String id) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(id));
         AccessControl.require(AccessControl.canManageFixtures(actor), actor, "delete fixtures");
         // The score history of the match is removed with it (ON DELETE CASCADE).
         helper.getWritableDatabase().delete("matches", "id = ?", new String[]{id});
@@ -1647,7 +1766,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void setMatchStatus(User actorArg, String matchId, int expectedVersion,
                                String status) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         Match match = requireMatch(matchId);
         AccessControl.require(AccessControl.canUpdateScore(actor, match), actor,
                 "change the status of this match");
@@ -1693,7 +1812,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     public void updateScore(User actorArg, String matchId, int expectedVersion,
                             Integer scoreA, Integer scoreB, String note, String status,
                             int currentPeriod, Integer penA, Integer penB) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         Match match = requireMatch(matchId);
         AccessControl.require(AccessControl.canUpdateScore(actor, match), actor,
                 "update the score of this match");
@@ -1808,7 +1927,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void saveSetScore(User actorArg, String matchId, int expectedVersion, int setNumber,
                              int scoreA, int scoreB, int tieBreakA, int tieBreakB) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         Match match = requireMatch(matchId);
         requireScoring(actor, match);
         requireEngine(match, SportTemplate.ENGINE_SETS, "in sets");
@@ -1840,7 +1959,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void scoreTennisPoint(User actorArg, String matchId, int expectedVersion,
                                  String side) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         Match match = requireMatch(matchId);
         requireScoring(actor, match);
         requireEngine(match, SportTemplate.ENGINE_SETS, "in sets");
@@ -1996,7 +2115,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     public void saveInnings(User actorArg, String matchId, int expectedVersion, int number,
                             String side, int runs, int wickets, int overs, int ballsInOver,
                             int extras) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         Match match = requireMatch(matchId);
         requireScoring(actor, match);
         requireEngine(match, SportTemplate.ENGINE_CRICKET, "by innings");
@@ -2116,7 +2235,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public String addEvent(User actorArg, String matchId, int minute, String side, String type,
                            String player) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         Match match = requireMatch(matchId);
         requireScoring(actor, match);
         if (!"A".equals(side) && !"B".equals(side)) {
@@ -2144,7 +2263,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void deleteEvent(User actorArg, String eventId) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatchEvent(eventId));
         String matchId = null;
         Cursor c = query("SELECT match_id FROM match_events WHERE id = ?", eventId);
         try {
@@ -2165,7 +2284,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void finaliseMatch(User actorArg, String matchId, int expectedVersion) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         AccessControl.require(AccessControl.canFinaliseResults(actor,
                 getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "finalise results");
 
@@ -2193,7 +2312,7 @@ public class SqliteArenaRepository implements ArenaRepository {
      */
     @Override
     public void reopenMatch(User actorArg, String matchId, int expectedVersion, String reason) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         AccessControl.require(AccessControl.canFinaliseResults(actor,
                 getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "reopen final results");
 
@@ -2214,7 +2333,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void correctFinalResult(User actorArg, String matchId, int expectedVersion,
                                    Integer scoreA, Integer scoreB, String note, String reason) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         AccessControl.require(AccessControl.canFinaliseResults(actor,
                 getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "correct final results");
 
@@ -2349,7 +2468,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public List<ScoreAudit> getScoreAudit(User actorArg, String matchId) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfMatch(matchId));
         AccessControl.require(AccessControl.canViewScoreHistory(actor), actor,
                 "view the score history");
 
@@ -2382,7 +2501,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     private static final String ROUND_SELECT =
             "SELECT r.*, c.name AS category_name, c.engine AS category_engine, "
-                    + "c.rules AS category_rules, s.name AS sport_name, "
+                    + "c.rules AS category_rules, s.name AS sport_name, s.id AS sport_id, "
                     + "ua.name AS assigned_name, ub.name AS updated_by_name, "
                     + "(SELECT COUNT(*) FROM event_entries e WHERE e.round_id = r.id) "
                     + "AS entry_count "
@@ -2444,6 +2563,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         r.categoryEngine = text(c, "category_engine");
         r.categoryRules = text(c, "category_rules");
         r.sportName = text(c, "sport_name");
+        r.sportId = text(c, "sport_id");
         r.assignedName = text(c, "assigned_name");
         r.updatedByName = text(c, "updated_by_name");
         r.entryCount = number(c, "entry_count");
@@ -2460,10 +2580,16 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public String saveRound(User actorArg, EventRound round) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg,
+                round.id == null ? sportOfCategory(round.categoryId) : sportOfRound(round.id));
         AccessControl.require(AccessControl.canManageFixtures(actor), actor,
                 "create or edit heats and finals");
 
+        // An existing event stays in its category, whatever the screen sent.
+        EventRound storedRound = round.id == null ? null : getRound(round.id);
+        if (storedRound != null) {
+            round.categoryId = storedRound.categoryId;
+        }
         Category category = getCategory(round.categoryId);
         if (category == null) {
             throw new ValidationException("The category no longer exists.");
@@ -2547,7 +2673,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void deleteRound(User actorArg, String id) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRound(id));
         AccessControl.require(AccessControl.canManageFixtures(actor), actor,
                 "delete heats and finals");
         // Entrants, attempts and history of the event are removed with it.
@@ -2638,7 +2764,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public String addEntry(User actorArg, String roundId, String registrationId, int lane) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRound(roundId));
         AccessControl.require(AccessControl.canManageFixtures(actor), actor,
                 "add entrants to an event");
         EventRound round = requireRound(roundId);
@@ -2693,7 +2819,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void removeEntry(User actorArg, String entryId) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfEntry(entryId));
         AccessControl.require(AccessControl.canManageFixtures(actor), actor,
                 "remove entrants from an event");
         EventRound round = roundOfEntry(entryId);
@@ -2731,7 +2857,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void setRoundStatus(User actorArg, String roundId, int expectedVersion,
                                String status) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRound(roundId));
         EventRound round = requireRound(roundId);
         AccessControl.require(AccessControl.canScore(actor, round.assignedTo, round.isFinal),
                 actor, "change the status of this event");
@@ -2770,7 +2896,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void saveTimedResult(User actorArg, String entryId, int expectedVersion,
                                 Integer timeMs, String resultStatus) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfEntry(entryId));
         EventRound round = roundOfEntry(entryId);
         requireRoundScoring(actor, round);
         if (round.isMeasured()) {
@@ -2812,7 +2938,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void saveAttempt(User actorArg, String entryId, int expectedVersion, int number,
                             Integer distanceCm, boolean foul) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfEntry(entryId));
         EventRound round = roundOfEntry(entryId);
         requireRoundScoring(actor, round);
         if (!round.isMeasured()) {
@@ -2879,7 +3005,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void setEntryStatus(User actorArg, String entryId, int expectedVersion,
                                String resultStatus) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfEntry(entryId));
         EventRound round = roundOfEntry(entryId);
         requireRoundScoring(actor, round);
         String status = checkResultStatus(resultStatus);
@@ -2977,7 +3103,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void finaliseRound(User actorArg, String roundId, int expectedVersion) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRound(roundId));
         AccessControl.require(AccessControl.canFinaliseResults(actor,
                 getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "make results official");
         EventRound round = requireRound(roundId);
@@ -2995,7 +3121,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public void reopenRound(User actorArg, String roundId, int expectedVersion, String reason) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRound(roundId));
         AccessControl.require(AccessControl.canFinaliseResults(actor,
                 getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "reopen official results");
         EventRound round = requireRound(roundId);
@@ -3014,7 +3140,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     @Override
     public List<ScoreAudit> getRoundAudit(User actorArg, String roundId) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfRound(roundId));
         AccessControl.require(AccessControl.canViewScoreHistory(actor), actor,
                 "view the result history");
         List<ScoreAudit> list = new ArrayList<>();
@@ -3046,7 +3172,7 @@ public class SqliteArenaRepository implements ArenaRepository {
      */
     @Override
     public String createFinalFromHeats(User actorArg, String categoryId) {
-        User actor = trusted(actorArg);
+        User actor = actorIn(actorArg, sportOfCategory(categoryId));
         AccessControl.require(AccessControl.canManageFixtures(actor), actor,
                 "create the final");
         Category category = getCategory(categoryId);
@@ -3348,11 +3474,11 @@ public class SqliteArenaRepository implements ArenaRepository {
         return u;
     }
 
-    private static List<User> readUsers(Cursor c) {
+    private List<User> readUsers(Cursor c) {
         List<User> list = new ArrayList<>();
         try {
             while (c.moveToNext()) {
-                list.add(readUser(c));
+                list.add(withSports(readUser(c)));
             }
         } finally {
             c.close();
@@ -3406,6 +3532,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         r.createdAt = c.getLong(c.getColumnIndexOrThrow("created_at"));
         r.categoryName = text(c, "category_name");
         r.sportName = text(c, "sport_name");
+        r.sportId = text(c, "sport_id");
         return r;
     }
 
@@ -3433,6 +3560,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         m.categoryName = text(c, "category_name");
         m.categoryFormat = text(c, "category_format");
         m.sportName = text(c, "sport_name");
+        m.sportId = text(c, "sport_id");
         m.assignedName = text(c, "assigned_name");
         m.updatedByName = text(c, "updated_by_name");
         m.categoryType = text(c, "category_type");

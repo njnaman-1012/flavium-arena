@@ -31,6 +31,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.example.flaviumarena.auth.AccessControl;
 import com.example.flaviumarena.auth.Session;
 import com.example.flaviumarena.data.ArenaException;
 import com.example.flaviumarena.data.ArenaRepository;
@@ -124,6 +125,15 @@ public abstract class BaseActivity extends AppCompatActivity {
         if (ended != null) {
             showMessage(ended);
         }
+    }
+
+    /**
+     * The logged-in user as they count inside one sport. A Coach manages only the
+     * sports assigned to them, so screens ask "may this user do it in this sport?".
+     * This only decides which buttons are shown; the repository decides again.
+     */
+    protected User userIn(String sportId) {
+        return AccessControl.inSport(currentUser, sportId);
     }
 
     /** Sets the layout, the title bar and the padding that keeps content clear of system bars. */

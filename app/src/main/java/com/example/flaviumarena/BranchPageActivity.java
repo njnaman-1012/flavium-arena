@@ -197,8 +197,8 @@ public class BranchPageActivity extends BaseActivity {
     }
 
     private void openRegistration(Registration r) {
-        if (AccessControl.canEditRegistration(currentUser, r)
-                || AccessControl.canSetLogo(currentUser, r)) {
+        if (AccessControl.canEditRegistration(userIn(r.sportId), r)
+                || AccessControl.canSetLogo(userIn(r.sportId), r)) {
             Intent intent = new Intent(this, RegistrationEditActivity.class);
             intent.putExtra(EXTRA_CATEGORY_ID, r.categoryId);
             intent.putExtra(EXTRA_REGISTRATION_ID, r.id);

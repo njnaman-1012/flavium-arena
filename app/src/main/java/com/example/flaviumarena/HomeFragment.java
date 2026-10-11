@@ -229,6 +229,13 @@ public class HomeFragment extends BaseFragment {
             tvText.setText("You have " + mine + " assigned matches that are not final yet.");
             tvAction.setText("Open my matches");
             card.setOnClickListener(v -> openMatches(false, true));
+        } else if (AccessControl.isCoach(user())) {
+            tvText.setText(user().coachSportNames.isEmpty()
+                    ? "You are a Coach. Faculty has not assigned a sport to you yet."
+                    : "You are the Coach for " + user().coachSportNames + ". You manage "
+                    + "their categories, registrations, fixtures and results.");
+            tvAction.setText("Open sports");
+            card.setOnClickListener(v -> main().selectTab(R.id.nav_discover));
         } else if (AccessControl.isCaptain(user())) {
             tvText.setText("You are the Branch CR of " + user().branchName
                     + ". Register your teams and follow their fixtures.");

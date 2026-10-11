@@ -16,6 +16,7 @@ import com.example.flaviumarena.auth.AccessControl;
 import com.example.flaviumarena.model.AppSettings;
 import com.example.flaviumarena.model.Branch;
 import com.example.flaviumarena.model.Role;
+import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.User;
 
 import java.util.ArrayList;
@@ -94,6 +95,10 @@ public class UsersActivity extends BaseActivity {
             if (Role.CAPTAIN.equals(u.role)) {
                 subtitle += "\nBranch: " + u.branchName;
             }
+            if (Role.COACH.equals(u.role)) {
+                subtitle += "\nSports: " + (u.coachSportNames.isEmpty()
+                        ? "none assigned yet" : u.coachSportNames);
+            }
             if (!u.active) {
                 subtitle += "\nDeactivated";
             }
@@ -119,12 +124,19 @@ public class UsersActivity extends BaseActivity {
             showMessage("You can see this account but you are not allowed to change it.");
             return;
         }
-        String[] options = {"Edit details and role", "Reset password",
+        // A Coach has one more choice: the sports they look after.
+        boolean coach = Role.COACH.equals(user.role);
+        String[] options = coach
+                ? new String[]{"Edit details and role", "Reset password",
+                user.active ? "Deactivate" : "Reactivate", "Remove account", "Assign sports"}
+                : new String[]{"Edit details and role", "Reset password",
                 user.active ? "Deactivate" : "Reactivate", "Remove account"};
         new AlertDialog.Builder(this)
                 .setTitle(user.name)
                 .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
+                    if (which == 4) {
+                        showCoachSportsDialog(user.id, user.name, user.coachSportIds);
+                    } else if (which == 0) {
                         showAccountDialog(user);
                     } else if (which == 1) {
                         showPasswordDialog(user);
@@ -208,13 +220,51 @@ public class UsersActivity extends BaseActivity {
                     }
                     String chosenBranch = branchId;
                     if (existing == null) {
-                        attempt(() -> repo.createUser(currentUser, textOf(etName),
-                                textOf(etEmail), etPassword.getText().toString(), role,
+                        final String[] created = new String[1];
+                        String name = textOf(etName);
+                        boolean ok = attempt(() -> created[0] = repo.createUser(currentUser,
+                                name, textOf(etEmail), etPassword.getText().toString(), role,
                                 chosenBranch));
+                        // A new Coach has no sports yet: ask for them straight away.
+                        if (ok && Role.COACH.equals(role)) {
+                            showCoachSportsDialog(created[0], name, new ArrayList<>());
+                        }
                     } else {
                         attempt(() -> repo.updateUser(currentUser, existing.id, textOf(etName),
                                 textOf(etEmail), role, chosenBranch));
                     }
+                    load();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /** Tick the sports a Coach looks after. Only Faculty can save this. */
+    private void showCoachSportsDialog(String userId, String name, List<String> current) {
+        List<Sport> sports = repo.getSports();
+        if (sports.isEmpty()) {
+            showMessage("Add the sports first. A Coach is then assigned to one or more of "
+                    + "them.");
+            return;
+        }
+        String[] names = new String[sports.size()];
+        boolean[] ticked = new boolean[sports.size()];
+        for (int i = 0; i < names.length; i++) {
+            names[i] = sports.get(i).name;
+            ticked[i] = current.contains(sports.get(i).id);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Sports of " + name)
+                .setMultiChoiceItems(names, ticked, (dialog, which, isChecked) ->
+                        ticked[which] = isChecked)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    List<String> chosen = new ArrayList<>();
+                    for (int i = 0; i < ticked.length; i++) {
+                        if (ticked[i]) {
+                            chosen.add(sports.get(i).id);
+                        }
+                    }
+                    attempt(() -> repo.setCoachSports(currentUser, userId, chosen));
                     load();
                 })
                 .setNegativeButton("Cancel", null)

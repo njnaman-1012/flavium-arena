@@ -54,7 +54,7 @@ public class CategoriesActivity extends BaseActivity {
         if (adapter == null) {
             return;
         }
-        show(findViewById(R.id.btnAdd), AccessControl.canManageCategories(currentUser));
+        show(findViewById(R.id.btnAdd), AccessControl.canManageCategories(userIn(sportId)));
 
         List<RowAdapter.Row> rows = new ArrayList<>();
         for (Category c : repo.getCategories(sportId)) {

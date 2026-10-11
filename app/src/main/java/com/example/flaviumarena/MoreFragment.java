@@ -86,6 +86,14 @@ public class MoreFragment extends BaseFragment {
             }
         }
 
+        // A Coach's own tools: the sports Faculty assigned to them.
+        if (AccessControl.isCoach(user())) {
+            addSection("My sports");
+            addRow(R.drawable.ic_trophy, user().coachSportNames.isEmpty()
+                            ? "No sports assigned yet" : user().coachSportNames, "", false,
+                    () -> main().selectTab(R.id.nav_discover));
+        }
+
         // A captain's own tools.
         if (AccessControl.isCaptain(user())) {
             addSection("My branch");

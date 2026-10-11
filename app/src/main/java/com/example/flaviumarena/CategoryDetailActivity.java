@@ -122,7 +122,7 @@ public class CategoryDetailActivity extends BaseActivity {
                     "Standings from finalised results", StandingsActivity.class);
         }
 
-        boolean canManage = AccessControl.canManageCategories(currentUser);
+        boolean canManage = AccessControl.canManageCategories(userIn(c.sportId));
         show(findViewById(R.id.btnEditCategory), canManage);
         show(findViewById(R.id.btnDeleteCategory), canManage);
     }

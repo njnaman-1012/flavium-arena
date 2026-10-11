@@ -79,6 +79,12 @@ public interface ArenaRepository {
 
     void setUserActive(User actor, String userId, boolean active);
 
+    /**
+     * Faculty only: the sports a Coach looks after. The list replaces the earlier one.
+     * A Coach manages categories, registrations, fixtures and results of these sports.
+     */
+    void setCoachSports(User actor, String userId, List<String> sportIds);
+
     void deleteUser(User actor, String userId);
 
     // ----- Branches, settings, administrative log -----

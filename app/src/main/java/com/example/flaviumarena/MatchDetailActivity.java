@@ -312,7 +312,7 @@ public class MatchDetailActivity extends BaseActivity {
         rows.removeAllViews();
         List<MatchEvent> events = repo.getEvents(matchId);
         show(findViewById(R.id.tvEventsTitle), !events.isEmpty());
-        boolean canDelete = AccessControl.canUpdateScore(currentUser, match) && !match.isFinal;
+        boolean canDelete = AccessControl.canUpdateScore(userIn(match.sportId), match) && !match.isFinal;
         for (MatchEvent e : events) {
             String side = "A".equals(e.side) ? match.sideAShort() : match.sideBShort();
             View row = LayoutInflater.from(this).inflate(R.layout.item_breakdown_row, rows, false);
@@ -350,15 +350,15 @@ public class MatchDetailActivity extends BaseActivity {
 
     private void showControls() {
         // Faculty always; a Core only when Faculty has allowed it.
-        boolean canFinalise = AccessControl.canFinaliseResults(currentUser,
+        boolean canFinalise = AccessControl.canFinaliseResults(userIn(match.sportId),
                 repo.getFlag(AppSettings.CORE_CAN_FINALISE));
-        boolean canScore = AccessControl.canUpdateScore(currentUser, match) && !match.isFinal;
+        boolean canScore = AccessControl.canUpdateScore(userIn(match.sportId), match) && !match.isFinal;
 
         show(findViewById(R.id.scorePanel), canScore);
         show(findViewById(R.id.btnFinalise), canFinalise && !match.isFinal
                 && Match.STATUS_COMPLETED.equals(match.status) && match.hasScore());
         show(findViewById(R.id.correctionPanel), canFinalise && match.isFinal);
-        show(findViewById(R.id.corePanel), AccessControl.canManageFixtures(currentUser));
+        show(findViewById(R.id.corePanel), AccessControl.canManageFixtures(userIn(match.sportId)));
         etReason.setText("");
         if (!canScore) {
             return;
@@ -603,7 +603,7 @@ public class MatchDetailActivity extends BaseActivity {
     // =====================================================================
 
     private void showHistory() {
-        boolean history = AccessControl.canViewScoreHistory(currentUser);
+        boolean history = AccessControl.canViewScoreHistory(userIn(match.sportId));
         TextView tvAudit = findViewById(R.id.tvAudit);
         show(findViewById(R.id.tvAuditTitle), history);
         show(tvAudit, history);

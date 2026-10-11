@@ -1,5 +1,8 @@
 package com.example.flaviumarena.model;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /** An organiser account. The password is never kept in this object. */
 public class User {
     public String id;
@@ -18,4 +21,15 @@ public class User {
      * member of the public, whatever the other fields say.
      */
     public String sessionId;
+
+    /** Only for a Coach: the sports Faculty assigned to them. Filled in by the repository. */
+    public List<String> coachSportIds = new ArrayList<>();
+    /** The names of those sports, for display. */
+    public String coachSportNames = "";
+    /**
+     * True on the copy of a Coach that AccessControl.inSport makes for one of their own
+     * sports. It is never stored and never read from a screen's object: the repository
+     * works it out again for every call.
+     */
+    public boolean sportAdmin;
 }

@@ -44,6 +44,7 @@ public class Registration {
     public String branchCode;
     public String categoryName;
     public String sportName;
+    public String sportId;
 
     public boolean isApproved() {
         return STATUS_APPROVED.equals(status);

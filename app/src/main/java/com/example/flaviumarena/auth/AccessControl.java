@@ -46,6 +46,10 @@ public final class AccessControl {
         return Role.ASOO_CORE.equals(roleOf(user));
     }
 
+    public static boolean isCoach(User user) {
+        return Role.COACH.equals(roleOf(user));
+    }
+
     public static boolean isCaptain(User user) {
         return Role.CAPTAIN.equals(roleOf(user));
     }
@@ -60,6 +64,48 @@ public final class AccessControl {
         return isAdmin(user) || isAsooCore(user);
     }
 
+    // ----- Coaches: administrators of the sports assigned to them -----
+
+    /** True when this user is a Coach and Faculty assigned them this sport. */
+    public static boolean coaches(User user, String sportId) {
+        return isCoach(user) && sportId != null && user.coachSportIds.contains(sportId);
+    }
+
+    /**
+     * The user as they count inside one sport. Everyone is returned unchanged except a
+     * Coach of that sport, who gets a copy marked as its administrator. The checks below
+     * that concern categories, registrations, fixtures and results accept that mark;
+     * the checks for accounts, branches, settings and sports themselves never do, so a
+     * Coach has no authority outside their sports.
+     */
+    public static User inSport(User user, String sportId) {
+        if (user == null) {
+            return null;
+        }
+        User copy = new User();
+        copy.id = user.id;
+        copy.name = user.name;
+        copy.email = user.email;
+        copy.role = user.role;
+        copy.active = user.active;
+        copy.branchId = user.branchId;
+        copy.branchName = user.branchName;
+        copy.sessionId = user.sessionId;
+        copy.coachSportIds = user.coachSportIds;
+        copy.coachSportNames = user.coachSportNames;
+        copy.sportAdmin = coaches(user, sportId);
+        return copy;
+    }
+
+    private static boolean sportAdminHere(User user) {
+        return isCoach(user) && user.sportAdmin;
+    }
+
+    /** Faculty and Core everywhere; a Coach inside a sport assigned to them. */
+    private static boolean managesHere(User user) {
+        return isAdmin(user) || sportAdminHere(user);
+    }
+
     // ----- Festival administration: Faculty and Core -----
 
     public static boolean canManageSports(User user) {
@@ -67,15 +113,15 @@ public final class AccessControl {
     }
 
     public static boolean canManageCategories(User user) {
-        return isAdmin(user);
+        return managesHere(user);
     }
 
     public static boolean canManageRegistrations(User user) {
-        return isAdmin(user);
+        return managesHere(user);
     }
 
     public static boolean canManageFixtures(User user) {
-        return isAdmin(user);
+        return managesHere(user);
     }
 
     public static boolean canViewDashboard(User user) {
@@ -136,7 +182,7 @@ public final class AccessControl {
 
     /** Faculty and Core register for any branch. A captain only for their own branch. */
     public static boolean canRegisterForBranch(User user, String branchId) {
-        return isAdmin(user) || isCaptainOf(user, branchId);
+        return managesHere(user) || isCaptainOf(user, branchId);
     }
 
     /**
@@ -148,7 +194,7 @@ public final class AccessControl {
         if (registration == null) {
             return false;
         }
-        if (isAdmin(user)) {
+        if (managesHere(user)) {
             return true;
         }
         return isCaptainOf(user, registration.branchId) && !registration.isApproved();
@@ -157,23 +203,23 @@ public final class AccessControl {
     /** The logo is the one thing a captain may still change after approval. */
     public static boolean canSetLogo(User user, Registration registration) {
         return registration != null
-                && (isAdmin(user) || isCaptainOf(user, registration.branchId));
+                && (managesHere(user) || isCaptainOf(user, registration.branchId));
     }
 
     // ----- Private information -----
 
     /** Phone numbers and pending or rejected registrations are hidden from the public. */
     public static boolean canViewPrivateRegistrationData(User user) {
-        return isStaff(user);
+        return isStaff(user) || sportAdminHere(user);
     }
 
     /** A captain also sees the private details of their own branch, and only those. */
     public static boolean canViewPrivateRegistrationData(User user, String branchId) {
-        return isStaff(user) || isCaptainOf(user, branchId);
+        return isStaff(user) || sportAdminHere(user) || isCaptainOf(user, branchId);
     }
 
     public static boolean canViewScoreHistory(User user) {
-        return isStaff(user);
+        return isStaff(user) || sportAdminHere(user);
     }
 
     // ----- Match operations -----
@@ -193,7 +239,7 @@ public final class AccessControl {
      * result is not final.
      */
     public static boolean canScore(User user, String assignedTo, boolean isFinal) {
-        if (isAdmin(user)) {
+        if (managesHere(user)) {
             return true;
         }
         if (isAsooCore(user)) {
@@ -207,7 +253,7 @@ public final class AccessControl {
      * a Core only when Faculty has switched that on.
      */
     public static boolean canFinaliseResults(User user, boolean coreMayFinalise) {
-        return isFaculty(user) || (isCore(user) && coreMayFinalise);
+        return isFaculty(user) || (isCore(user) && coreMayFinalise) || sportAdminHere(user);
     }
 
     /** Throws PermissionDeniedException when the check failed. */

@@ -90,7 +90,7 @@ public class RoundsActivity extends BaseActivity {
                 ? "This race is run in heats. The best of each heat go through to the final."
                 : "Everyone competes in one final.");
 
-        boolean canManage = AccessControl.canManageFixtures(currentUser);
+        boolean canManage = AccessControl.canManageFixtures(userIn(category.sportId));
         Button btnAdd = findViewById(R.id.btnAdd);
         btnAdd.setText(heats ? "Add a heat or the final" : "Schedule the final");
         show(btnAdd, canManage && (heats || !hasFinal));

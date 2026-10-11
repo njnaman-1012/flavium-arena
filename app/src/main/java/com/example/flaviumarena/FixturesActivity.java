@@ -9,6 +9,7 @@ import android.widget.ListView;
 import android.widget.Spinner;
 
 import com.example.flaviumarena.auth.AccessControl;
+import com.example.flaviumarena.model.Category;
 import com.example.flaviumarena.model.Match;
 
 import java.util.ArrayList;
@@ -88,8 +89,9 @@ public class FixturesActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         // A fixture belongs to a category, so "Add" is offered only inside one.
-        show(findViewById(R.id.btnAdd),
-                categoryId != null && AccessControl.canManageFixtures(currentUser));
+        Category shown = categoryId == null ? null : repo.getCategory(categoryId);
+        show(findViewById(R.id.btnAdd), shown != null
+                && AccessControl.canManageFixtures(userIn(shown.sportId)));
         matches = repo.getMatches(categoryId);
         showRows();
     }

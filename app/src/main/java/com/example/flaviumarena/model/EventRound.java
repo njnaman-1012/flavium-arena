@@ -31,6 +31,7 @@ public class EventRound {
     // Filled in by the repository for display
     public String categoryName;
     public String sportName;
+    public String sportId;
     public String categoryEngine;
     public String categoryRules;
     public String assignedName;

@@ -120,12 +120,12 @@ public class RoundDetailActivity extends BaseActivity {
     }
 
     private boolean mayScore() {
-        return AccessControl.canScore(currentUser, round.assignedTo, round.isFinal)
+        return AccessControl.canScore(userIn(round.sportId), round.assignedTo, round.isFinal)
                 && !round.isFinal;
     }
 
     private boolean mayManage() {
-        return AccessControl.canManageFixtures(currentUser) && !round.isFinal;
+        return AccessControl.canManageFixtures(userIn(round.sportId)) && !round.isFinal;
     }
 
     // =====================================================================
@@ -253,7 +253,7 @@ public class RoundDetailActivity extends BaseActivity {
 
     private void showControls() {
         // Faculty always; a Core only when Faculty has allowed it.
-        boolean canFinalise = AccessControl.canFinaliseResults(currentUser,
+        boolean canFinalise = AccessControl.canFinaliseResults(userIn(round.sportId),
                 repo.getFlag(AppSettings.CORE_CAN_FINALISE));
 
         show(findViewById(R.id.scorePanel), mayScore());
@@ -261,7 +261,7 @@ public class RoundDetailActivity extends BaseActivity {
         show(findViewById(R.id.btnFinalise), canFinalise && !round.isFinal
                 && Match.STATUS_COMPLETED.equals(round.status));
         show(findViewById(R.id.correctionPanel), canFinalise && round.isFinal);
-        show(findViewById(R.id.corePanel), AccessControl.canManageFixtures(currentUser));
+        show(findViewById(R.id.corePanel), AccessControl.canManageFixtures(userIn(round.sportId)));
         etReason.setText("");
 
         for (int i = 0; i < Match.STATUSES.length; i++) {
@@ -434,7 +434,7 @@ public class RoundDetailActivity extends BaseActivity {
     // =====================================================================
 
     private void showHistory() {
-        boolean history = AccessControl.canViewScoreHistory(currentUser);
+        boolean history = AccessControl.canViewScoreHistory(userIn(round.sportId));
         TextView tvAudit = findViewById(R.id.tvAudit);
         show(findViewById(R.id.tvAuditTitle), history);
         show(tvAudit, history);

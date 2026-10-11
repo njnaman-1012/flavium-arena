@@ -80,11 +80,12 @@ public class RegistrationsActivity extends BaseActivity {
             return;
         }
         // Statuses matter to staff and to a captain (for their own branch).
-        boolean seesStatuses = AccessControl.isStaff(currentUser)
+        // A Coach counts as an organiser inside the sports assigned to them.
+        boolean manages = AccessControl.canManageRegistrations(userIn(category.sportId));
+        boolean seesStatuses = AccessControl.isStaff(currentUser) || manages
                 || AccessControl.isCaptain(currentUser);
         show(spFilter, seesStatuses);
-        show(findViewById(R.id.btnAdd), AccessControl.isAdmin(currentUser)
-                || AccessControl.isCaptain(currentUser));
+        show(findViewById(R.id.btnAdd), manages || AccessControl.isCaptain(currentUser));
         registrations = repo.getRegistrations(currentUser, categoryId);
         showRows();
     }
@@ -102,8 +103,8 @@ public class RegistrationsActivity extends BaseActivity {
                     && !Registration.STATUSES[filter - 1].equals(r.status)) {
                 continue;
             }
-            boolean sensitive = AccessControl.canViewPrivateRegistrationData(currentUser,
-                    r.branchId);
+            boolean sensitive = AccessControl.canViewPrivateRegistrationData(
+                    userIn(r.sportId), r.branchId);
             // A team's title already is its branch and year; an individual shows them below.
             String subtitle = category.isTeam()
                     ? r.memberCount() + " members"
@@ -123,8 +124,8 @@ public class RegistrationsActivity extends BaseActivity {
         if (r == null) {
             return;
         }
-        if (AccessControl.canEditRegistration(currentUser, r)
-                || AccessControl.canSetLogo(currentUser, r)) {
+        if (AccessControl.canEditRegistration(userIn(r.sportId), r)
+                || AccessControl.canSetLogo(userIn(r.sportId), r)) {
             Intent intent = new Intent(this, RegistrationEditActivity.class);
             intent.putExtra(EXTRA_CATEGORY_ID, categoryId);
             intent.putExtra(EXTRA_REGISTRATION_ID, id);
@@ -132,7 +133,7 @@ public class RegistrationsActivity extends BaseActivity {
             return;
         }
         showMessage(Ui.registrationSummary(r, category.isTeam(),
-                AccessControl.canViewPrivateRegistrationData(currentUser, r.branchId)));
+                AccessControl.canViewPrivateRegistrationData(userIn(r.sportId), r.branchId)));
     }
 
     // ----- Downloads -----

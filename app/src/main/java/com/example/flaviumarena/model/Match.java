@@ -37,6 +37,7 @@ public class Match {
     public String teamBName;
     public String categoryName;
     public String sportName;
+    public String sportId;
     public String categoryFormat;
     public String assignedName;
     public String updatedByName;

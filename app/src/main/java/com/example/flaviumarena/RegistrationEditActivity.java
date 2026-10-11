@@ -74,17 +74,18 @@ public class RegistrationEditActivity extends BaseActivity {
             registration.branchId = AccessControl.isCaptain(currentUser)
                     ? currentUser.branchId : getIntent().getStringExtra(EXTRA_BRANCH_ID);
             registration.logoPath = "";
-            canEditAll = AccessControl.canRegisterForBranch(currentUser, registration.branchId)
-                    || AccessControl.isAdmin(currentUser);
+            canEditAll = AccessControl.canRegisterForBranch(userIn(category.sportId),
+                    registration.branchId)
+                    || AccessControl.canManageRegistrations(userIn(category.sportId));
         } else {
             registration = repo.getRegistration(currentUser, registrationId);
             if (registration == null) {
                 finish();
                 return;
             }
-            canEditAll = AccessControl.canEditRegistration(currentUser, registration);
+            canEditAll = AccessControl.canEditRegistration(userIn(category.sportId), registration);
         }
-        if (!canEditAll && !AccessControl.canSetLogo(currentUser, registration)) {
+        if (!canEditAll && !AccessControl.canSetLogo(userIn(category.sportId), registration)) {
             toast("You cannot change this registration.");
             finish();
             return;
@@ -167,7 +168,7 @@ public class RegistrationEditActivity extends BaseActivity {
         tvStatus.setText("Status: " + registration.status);
 
         boolean saved = registration.id != null;
-        boolean admin = AccessControl.canManageRegistrations(currentUser);
+        boolean admin = AccessControl.canManageRegistrations(userIn(category.sportId));
         show(findViewById(R.id.btnApprove),
                 admin && saved && !Registration.STATUS_APPROVED.equals(registration.status));
         show(findViewById(R.id.btnReject),
