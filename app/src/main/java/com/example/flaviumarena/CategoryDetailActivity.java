@@ -126,4 +126,23 @@ public class CategoryDetailActivity extends BaseActivity {
         show(findViewById(R.id.btnEditCategory), canManage);
         show(findViewById(R.id.btnDeleteCategory), canManage);
     }
+
+    // ----- Downloads -----
+
+    /** The records of this category as files. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Registrations (CSV)", "Fixtures and scores (CSV)", "Standings and medals (CSV)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        if (position == 0) {
+            return exports -> exports.categoryRegistrations(categoryId);
+        }
+        if (position == 1) {
+            return exports -> exports.fixtures(categoryId);
+        }
+        return exports -> exports.categoryStandings(categoryId);
+    }
 }

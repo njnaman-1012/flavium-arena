@@ -134,4 +134,17 @@ public class RegistrationsActivity extends BaseActivity {
         showMessage(Ui.registrationSummary(r, category.isTeam(),
                 AccessControl.canViewPrivateRegistrationData(currentUser, r.branchId)));
     }
+
+    // ----- Downloads -----
+
+    /** The registrations this person may see, as a file. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Registrations of this category (CSV)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        return exports -> exports.categoryRegistrations(categoryId);
+    }
 }

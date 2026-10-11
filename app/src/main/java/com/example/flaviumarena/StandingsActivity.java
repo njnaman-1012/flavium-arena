@@ -345,4 +345,17 @@ public class StandingsActivity extends BaseActivity {
                 (int) (10 * getResources().getDisplayMetrics().density);
         rows.addView(card);
     }
+
+    // ----- Downloads -----
+
+    /** What this screen shows for the chosen category, as a file. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Standings and medals of this category (CSV)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        return exports -> exports.categoryStandings(categoryId);
+    }
 }

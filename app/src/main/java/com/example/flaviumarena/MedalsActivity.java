@@ -88,4 +88,20 @@ public class MedalsActivity extends BaseActivity {
                 branch + win.sportName + ", " + win.categoryName, Medals.label(win.medal),
                 Ui.sportPicture(win.sportName));
     }
+
+    // ----- Downloads -----
+
+    /** The medal table as a spreadsheet, or a readable report. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Medal table (CSV)", "Festival report (PDF)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        if (position == 0) {
+            return exports -> exports.medalTable();
+        }
+        return exports -> exports.festivalReport();
+    }
 }

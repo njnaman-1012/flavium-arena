@@ -96,6 +96,8 @@ public class MoreFragment extends BaseFragment {
         addSection("Festival");
         addRow(R.drawable.ic_trophy, "Medal table", "", false, () -> open(MedalsActivity.class));
         addRow(R.drawable.ic_users, "Branches", "", false, () -> open(BranchesActivity.class));
+        addRow(R.drawable.ic_download, "Reports and downloads", "", false,
+                () -> open(ReportsActivity.class));
         addRow(R.drawable.ic_search, "Search all fixtures", "", false,
                 () -> open(FixturesActivity.class));
         addRow(R.drawable.ic_trophy, "Browse sports", "", false,

@@ -2561,6 +2561,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         List<EventEntry> list = new ArrayList<>();
         // Placed entrants first in order of position, then the rest by lane.
         Cursor c = query("SELECT e.*, r.name AS reg_name, r.year, r.logo_path, r.members, "
+                + "r.branch_id AS reg_branch_id, "
                 + "b.name AS branch_name, b.code AS branch_code "
                 + "FROM event_entries e "
                 + "JOIN registrations r ON r.id = e.registration_id "
@@ -2585,6 +2586,7 @@ public class SqliteArenaRepository implements ArenaRepository {
                 e.team = !text(c, "members").isEmpty();
                 e.branchName = text(c, "branch_name");
                 e.branchCode = text(c, "branch_code");
+                e.branchId = textOrNull(c, "reg_branch_id");
                 list.add(e);
             }
         } finally {

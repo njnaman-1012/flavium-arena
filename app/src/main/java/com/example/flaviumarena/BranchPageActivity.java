@@ -233,4 +233,26 @@ public class BranchPageActivity extends BaseActivity {
                 })
                 .show();
     }
+
+    // ----- Downloads -----
+
+    /** Everything this screen shows about the branch can be saved as a file. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Registrations (CSV)", "Fixtures and results (CSV)", "Medals (CSV)", "Branch report (PDF)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        if (position == 0) {
+            return exports -> exports.branchRegistrations(branchId);
+        }
+        if (position == 1) {
+            return exports -> exports.branchFixtures(branchId);
+        }
+        if (position == 2) {
+            return exports -> exports.branchMedals(branchId);
+        }
+        return exports -> exports.branchReport(branchId);
+    }
 }

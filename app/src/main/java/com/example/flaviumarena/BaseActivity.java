@@ -1,12 +1,16 @@
 package com.example.flaviumarena;
 
 import android.app.DatePickerDialog;
+import android.content.ActivityNotFoundException;
 import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.database.sqlite.SQLiteException;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.net.Uri;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -18,6 +22,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -29,8 +35,12 @@ import com.example.flaviumarena.auth.Session;
 import com.example.flaviumarena.data.ArenaException;
 import com.example.flaviumarena.data.ArenaRepository;
 import com.example.flaviumarena.data.RepositoryProvider;
+import com.example.flaviumarena.export.ExportFile;
+import com.example.flaviumarena.export.ExportService;
 import com.example.flaviumarena.model.User;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Calendar;
 import java.util.Locale;
 
@@ -55,10 +65,28 @@ public abstract class BaseActivity extends AppCompatActivity {
     /** True when the database could not be opened; the screen then only shows an error. */
     protected boolean databaseFailed;
 
+    // ----- Downloads -----
+    private static final int MENU_DOWNLOAD = 1;
+    /** The file that is waiting for the person to choose where to save it. */
+    private ExportFile pendingExport;
+    private ActivityResultLauncher<String> saveCsv;
+    private ActivityResultLauncher<String> savePdf;
+
+    /** Makes one download. The export service only hands out what this user may see. */
+    protected interface Download {
+        ExportFile build(ExportService exports);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
+        // Android's own "save as" screen: the person chooses the folder, so the app
+        // needs no storage permission.
+        saveCsv = registerForActivityResult(
+                new ActivityResultContracts.CreateDocument(ExportFile.TYPE_CSV), this::saveExport);
+        savePdf = registerForActivityResult(
+                new ActivityResultContracts.CreateDocument(ExportFile.TYPE_PDF), this::saveExport);
         repo = RepositoryProvider.get(this);
         try {
             currentUser = Session.currentUser(this, repo);
@@ -133,6 +161,86 @@ public abstract class BaseActivity extends AppCompatActivity {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
+    }
+
+    // ----- Downloads -----
+
+    /**
+     * Screens that show records override these two methods: the names of the downloads
+     * they offer, and how each one is made. A screen with at least one download gets a
+     * download button in its title bar.
+     */
+    protected String[] downloadNames() {
+        return new String[0];
+    }
+
+    protected Download downloadAt(int position) {
+        return null;
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        if (!databaseFailed && downloadNames().length > 0) {
+            menu.add(Menu.NONE, MENU_DOWNLOAD, Menu.NONE, "Download")
+                    .setIcon(R.drawable.ic_download)
+                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+        }
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() != MENU_DOWNLOAD) {
+            return super.onOptionsItemSelected(item);
+        }
+        String[] names = downloadNames();
+        if (names.length == 1) {
+            download(downloadAt(0));
+        } else {
+            new AlertDialog.Builder(this)
+                    .setTitle("Download")
+                    .setItems(names, (dialog, which) -> download(downloadAt(which)))
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        }
+        return true;
+    }
+
+    /** Builds a file and asks where to save it. Refusals are shown as a message. */
+    protected void download(Download download) {
+        if (download == null) {
+            return;
+        }
+        final ExportFile[] file = new ExportFile[1];
+        if (!attempt(() -> file[0] = download.build(new ExportService(repo, currentUser)))) {
+            return;
+        }
+        pendingExport = file[0];
+        try {
+            (file[0].isPdf() ? savePdf : saveCsv).launch(file[0].fileName);
+        } catch (ActivityNotFoundException e) {
+            pendingExport = null;
+            showMessage("This device has no app for choosing where to save a file.");
+        }
+    }
+
+    /** Runs when the person has chosen a place (or cancelled). */
+    private void saveExport(Uri destination) {
+        ExportFile file = pendingExport;
+        pendingExport = null;
+        if (destination == null || file == null) {
+            toast("Download cancelled");
+            return;
+        }
+        try (OutputStream out = getContentResolver().openOutputStream(destination)) {
+            if (out == null) {
+                throw new IOException("the chosen place cannot be written to");
+            }
+            out.write(file.content);
+            toast("Saved " + file.fileName);
+        } catch (IOException | SecurityException e) {
+            showMessage("The file could not be saved: " + e.getMessage());
+        }
     }
 
     /** The back arrow in the title bar closes the screen. */

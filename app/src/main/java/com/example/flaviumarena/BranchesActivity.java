@@ -127,4 +127,20 @@ public class BranchesActivity extends BaseActivity {
                 .setNegativeButton("Cancel", null)
                 .show();
     }
+
+    // ----- Downloads -----
+
+    /** The list of branches as a file. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Branch list with medal counts (CSV)", "Medal table (CSV)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        if (position == 0) {
+            return exports -> exports.branchList();
+        }
+        return exports -> exports.medalTable();
+    }
 }

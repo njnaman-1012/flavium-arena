@@ -43,6 +43,7 @@
         <activity android:name=".RoundDetailActivity" />
         <activity android:name=".StandingsActivity" />
         <activity android:name=".MedalsActivity" />
+        <activity android:name=".ReportsActivity" />
         <activity android:name=".UsersActivity" />
         <activity android:name=".SelfTestActivity" />
     </application>

@@ -125,4 +125,17 @@ public class FixturesActivity extends BaseActivity {
         }
         return Match.STATUSES[filter - 1].equals(m.status);
     }
+
+    // ----- Downloads -----
+
+    /** The fixtures of this category, or of the whole festival, as a file. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Fixtures and scores (CSV)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        return exports -> exports.fixtures(categoryId);
+    }
 }

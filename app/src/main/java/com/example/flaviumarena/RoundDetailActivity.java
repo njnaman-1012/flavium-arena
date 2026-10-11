@@ -514,4 +514,17 @@ public class RoundDetailActivity extends BaseActivity {
                     .show();
         }
     }
+
+    // ----- Downloads -----
+
+    /** The entrants and results of this heat or final as a file. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Results of this event (CSV)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        return exports -> exports.eventResults(roundId);
+    }
 }

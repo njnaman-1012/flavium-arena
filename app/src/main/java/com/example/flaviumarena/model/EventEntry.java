@@ -46,6 +46,7 @@ public class EventEntry {
 
     // Filled in by the repository for display
     public String name;
+    public String branchId;
     public String branchName;
     public String branchCode;
     public int year;

@@ -96,4 +96,17 @@ public class RoundsActivity extends BaseActivity {
         show(btnAdd, canManage && (heats || !hasFinal));
         show(findViewById(R.id.btnDrawFinal), canManage && heats && hasHeat && !hasFinal);
     }
+
+    // ----- Downloads -----
+
+    /** The results of the category as a file. */
+    @Override
+    protected String[] downloadNames() {
+        return new String[]{"Results of every heat and final (CSV)"};
+    }
+
+    @Override
+    protected Download downloadAt(int position) {
+        return exports -> exports.categoryStandings(categoryId);
+    }
 }
