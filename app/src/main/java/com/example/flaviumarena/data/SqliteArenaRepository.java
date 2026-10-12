@@ -2,7 +2,6 @@ package com.example.flaviumarena.data;
 
 import android.content.ContentValues;
 import android.database.Cursor;
-import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 
 import com.example.flaviumarena.auth.AccessControl;
@@ -26,20 +25,15 @@ import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.model.StandingRow;
 import com.example.flaviumarena.model.User;
-import com.example.flaviumarena.scoring.EventRanking;
-import com.example.flaviumarena.scoring.LiveLink;
-import com.example.flaviumarena.scoring.Measure;
 import com.example.flaviumarena.scoring.Medals;
-import com.example.flaviumarena.scoring.SetRules;
-import com.example.flaviumarena.scoring.SetScoring;
-import com.example.flaviumarena.scoring.TennisGame;
 import com.example.flaviumarena.util.DateUtil;
 import com.example.flaviumarena.util.PasswordUtil;
 import com.example.flaviumarena.util.StandingsCalculator;
 
+import static com.example.flaviumarena.data.Sql.*;
+
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * The local (SQLite) implementation of ArenaRepository.
@@ -53,9 +47,15 @@ import java.util.UUID;
 public class SqliteArenaRepository implements ArenaRepository {
 
     private final DbHelper helper;
+    private final SessionStore sessions;
+    private final MatchStore matches;
+    private final EventStore events;
 
     public SqliteArenaRepository(DbHelper helper) {
         this.helper = helper;
+        this.sessions = new SessionStore(helper);
+        this.matches = new MatchStore(this, helper);
+        this.events = new EventStore(this, helper);
     }
 
     // =====================================================================
@@ -146,9 +146,6 @@ public class SqliteArenaRepository implements ArenaRepository {
 
     // ----- Sessions: one live session per account -----
 
-    /** A session that has not been used for this long counts as ended. */
-    static final long SESSION_IDLE_MILLIS = 7L * 24 * 60 * 60 * 1000;
-
     public static final String END_TAKEN_OVER = "TAKEN_OVER";
     public static final String END_EXPIRED = "EXPIRED";
     public static final String END_LOGGED_OUT = "LOGGED_OUT";
@@ -166,121 +163,20 @@ public class SqliteArenaRepository implements ArenaRepository {
         // The password is checked first, so someone who does not know it learns nothing
         // about whether the account is in use.
         User user = checkCredentials(email, password, expectedRole);
-        user.sessionId = openSession(user, device, takeOver);
+        user.sessionId = sessions.openSession(user, device, takeOver);
         return user;
-    }
-
-    /**
-     * Opens a session for a user whose password has just been checked. Everything
-     * happens in one transaction, and the database has a rule of its own (a unique
-     * index) against two live sessions for one account, so two logins at the same
-     * moment cannot both succeed.
-     */
-    private String openSession(User user, String device, boolean takeOver) {
-        SQLiteDatabase db = helper.getWritableDatabase();
-        long now = System.currentTimeMillis();
-        db.beginTransaction();
-        try {
-            // A session that was abandoned (app removed, phone lost) ends by itself.
-            endSessions(db, "user_id = ? AND last_seen_at < ?", END_EXPIRED, user.id,
-                    String.valueOf(now - SESSION_IDLE_MILLIS));
-
-            String otherDevice = null;
-            long lastSeen = 0;
-            Cursor c = db.rawQuery("SELECT device, last_seen_at FROM sessions "
-                    + "WHERE user_id = ? AND revoked_at IS NULL", new String[]{user.id});
-            try {
-                if (c.moveToFirst()) {
-                    otherDevice = c.getString(0);
-                    lastSeen = c.getLong(1);
-                }
-            } finally {
-                c.close();
-            }
-            if (otherDevice != null) {
-                if (!takeOver) {
-                    throw new SessionActiveException("This account is already logged in"
-                            + (otherDevice.isEmpty() ? "" : " on " + otherDevice)
-                            + " (last active " + DateUtil.formatTimestamp(lastSeen) + "). "
-                            + "Log out there first, or sign that session out and continue "
-                            + "here.");
-                }
-                endSessions(db, "user_id = ?", END_TAKEN_OVER, user.id);
-            }
-
-            String id = newSessionId();
-            ContentValues cv = new ContentValues();
-            cv.put("id", id);
-            cv.put("user_id", user.id);
-            cv.put("device", clean(device));
-            cv.put("created_at", now);
-            cv.put("last_seen_at", now);
-            db.insertOrThrow("sessions", null, cv);
-            db.setTransactionSuccessful();
-            return id;
-        } finally {
-            db.endTransaction();
-        }
-    }
-
-    /** Ends every live session that matches the condition. */
-    private static void endSessions(SQLiteDatabase db, String where, String reason,
-                                    String... args) {
-        ContentValues cv = new ContentValues();
-        cv.put("revoked_at", System.currentTimeMillis());
-        cv.put("revoked_reason", reason);
-        db.update("sessions", cv, "revoked_at IS NULL AND " + where, args);
-    }
-
-    /** A long random value nobody can guess. */
-    private static String newSessionId() {
-        byte[] bytes = new byte[32];
-        new java.security.SecureRandom().nextBytes(bytes);
-        StringBuilder text = new StringBuilder();
-        for (byte b : bytes) {
-            text.append(String.format(java.util.Locale.US, "%02x", b));
-        }
-        return text.toString();
-    }
-
-    /** The id of the user of a live session, or null. Old sessions are ended on the way. */
-    private String userOfLiveSession(String sessionId) {
-        if (sessionId == null) {
-            return null;
-        }
-        String userId = null;
-        long lastSeen = 0;
-        Cursor c = query("SELECT user_id, last_seen_at FROM sessions "
-                + "WHERE id = ? AND revoked_at IS NULL", sessionId);
-        try {
-            if (c.moveToFirst()) {
-                userId = c.getString(0);
-                lastSeen = c.getLong(1);
-            }
-        } finally {
-            c.close();
-        }
-        if (userId == null) {
-            return null;
-        }
-        long now = System.currentTimeMillis();
-        if (lastSeen < now - SESSION_IDLE_MILLIS) {
-            endSessions(helper.getWritableDatabase(), "id = ?", END_EXPIRED, sessionId);
-            return null;
-        }
-        return userId;
     }
 
     @Override
     public User resumeSession(String sessionId) {
-        String userId = userOfLiveSession(sessionId);
+        String userId = sessions.userOfLiveSession(sessionId);
         User user = userId == null ? null : getUser(userId);
         if (user == null) {
             return null;
         }
         SQLiteDatabase db = helper.getWritableDatabase();
         if (!user.active) {
-            endSessions(db, "id = ?", END_DEACTIVATED, sessionId);
+            SessionStore.endSessions(db, "id = ?", END_DEACTIVATED, sessionId);
             return null;
         }
         // Remember that the session is in use, so it does not expire.
@@ -308,7 +204,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     @Override
     public void logout(User actor) {
         if (actor != null && actor.sessionId != null) {
-            endSessions(helper.getWritableDatabase(), "id = ?", END_LOGGED_OUT,
+            SessionStore.endSessions(helper.getWritableDatabase(), "id = ?", END_LOGGED_OUT,
                     actor.sessionId);
         }
     }
@@ -393,7 +289,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         String id = insertUser(name, email, password, Role.FACULTY, null);
         User created = getUser(id);
         audit(created, "FIRST_FACULTY_CREATED", "First Faculty account set up: " + created.name);
-        created.sessionId = openSession(created, "this device", false);
+        created.sessionId = sessions.openSession(created, "this device", false);
         return created;
     }
 
@@ -499,7 +395,7 @@ public class SqliteArenaRepository implements ArenaRepository {
 
         storePassword(userId, newPassword);
         // Whoever was logged in with the old password is signed out.
-        endSessions(helper.getWritableDatabase(), "user_id = ?", END_PASSWORD_RESET, userId);
+        SessionStore.endSessions(helper.getWritableDatabase(), "user_id = ?", END_PASSWORD_RESET, userId);
         audit(actor, "PASSWORD_RESET", "Password reset for " + target.name);
     }
 
@@ -529,7 +425,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         }
         if (!active) {
             // A deactivated account is signed out at once.
-            endSessions(db, "user_id = ?", END_DEACTIVATED, userId);
+            SessionStore.endSessions(db, "user_id = ?", END_DEACTIVATED, userId);
         }
         audit(actor, active ? "ACCOUNT_REACTIVATED" : "ACCOUNT_DEACTIVATED",
                 Role.label(target.role) + " " + target.name);
@@ -616,7 +512,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     }
 
     /** The trusted user as they count inside one sport (see AccessControl.inSport). */
-    private User actorIn(User actorArg, String sportId) {
+    User actorIn(User actorArg, String sportId) {
         return AccessControl.inSport(trusted(actorArg), sportId);
     }
 
@@ -632,7 +528,7 @@ public class SqliteArenaRepository implements ArenaRepository {
         }
     }
 
-    private String sportOfCategory(String categoryId) {
+    String sportOfCategory(String categoryId) {
         return lookup("SELECT sport_id FROM categories WHERE id = ?", categoryId);
     }
 
@@ -641,22 +537,22 @@ public class SqliteArenaRepository implements ArenaRepository {
                 + "ON c.id = r.category_id WHERE r.id = ?", registrationId);
     }
 
-    private String sportOfMatch(String matchId) {
+    String sportOfMatch(String matchId) {
         return lookup("SELECT c.sport_id FROM matches m JOIN categories c "
                 + "ON c.id = m.category_id WHERE m.id = ?", matchId);
     }
 
-    private String sportOfMatchEvent(String eventId) {
+    String sportOfMatchEvent(String eventId) {
         return lookup("SELECT c.sport_id FROM match_events e JOIN matches m ON m.id = e.match_id "
                 + "JOIN categories c ON c.id = m.category_id WHERE e.id = ?", eventId);
     }
 
-    private String sportOfRound(String roundId) {
+    String sportOfRound(String roundId) {
         return lookup("SELECT c.sport_id FROM event_rounds r JOIN categories c "
                 + "ON c.id = r.category_id WHERE r.id = ?", roundId);
     }
 
-    private String sportOfEntry(String entryId) {
+    String sportOfEntry(String entryId) {
         return lookup("SELECT c.sport_id FROM event_entries e JOIN event_rounds r "
                 + "ON r.id = e.round_id JOIN categories c ON c.id = r.category_id "
                 + "WHERE e.id = ?", entryId);
@@ -1142,7 +1038,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     // =====================================================================
 
     /** A registration with the names of its branch, category and sport. */
-    private static final String REG_SELECT =
+    static final String REG_SELECT =
             "SELECT r.*, b.name AS branch_name, b.code AS branch_code, "
                     + "c.name AS category_name, s.name AS sport_name, s.id AS sport_id "
                     + "FROM registrations r "
@@ -1206,7 +1102,7 @@ public class SqliteArenaRepository implements ArenaRepository {
     }
 
     /** The registration exactly as stored. Only for permission checks inside this class. */
-    private Registration rawRegistration(String id) {
+    Registration rawRegistration(String id) {
         if (id == null) {
             return null;
         }
@@ -1530,1728 +1426,190 @@ public class SqliteArenaRepository implements ArenaRepository {
     }
 
     // =====================================================================
-    // Fixtures and scores
+    // Fixtures and scores: see MatchStore
     // =====================================================================
-
-    /** Reads a match together with the names needed to display it. */
-    private static final String MATCH_SELECT =
-            "SELECT m.*, ra.name AS team_a_name, rb.name AS team_b_name, "
-                    + "ra.year AS year_a, rb.year AS year_b, "
-                    + "ra.logo_path AS logo_a, rb.logo_path AS logo_b, "
-                    + "ba.name AS branch_a_name, ba.code AS branch_a_code, "
-                    + "bb.name AS branch_b_name, bb.code AS branch_b_code, "
-                    + "c.type AS category_type, c.engine AS category_engine, "
-                    + "c.rules AS category_rules, "
-                    + "c.name AS category_name, c.format AS category_format, "
-                    + "s.name AS sport_name, s.id AS sport_id, ua.name AS assigned_name, "
-                    + "ub.name AS updated_by_name "
-                    + "FROM matches m "
-                    + "JOIN registrations ra ON ra.id = m.team_a_id "
-                    + "JOIN registrations rb ON rb.id = m.team_b_id "
-                    + "LEFT JOIN branches ba ON ba.id = ra.branch_id "
-                    + "LEFT JOIN branches bb ON bb.id = rb.branch_id "
-                    + "JOIN categories c ON c.id = m.category_id "
-                    + "JOIN sports s ON s.id = c.sport_id "
-                    + "LEFT JOIN users ua ON ua.id = m.assigned_to "
-                    + "LEFT JOIN users ub ON ub.id = m.updated_by ";
-
-    private static final String MATCH_ORDER = " ORDER BY m.match_date, m.match_time, m.round";
 
     @Override
     public List<Match> getMatches(String categoryId) {
-        Cursor c;
-        if (categoryId == null) {
-            c = query(MATCH_SELECT + MATCH_ORDER);
-        } else {
-            c = query(MATCH_SELECT + "WHERE m.category_id = ?" + MATCH_ORDER, categoryId);
-        }
-        List<Match> list = new ArrayList<>();
-        try {
-            while (c.moveToNext()) {
-                list.add(readMatch(c));
-            }
-        } finally {
-            c.close();
-        }
-        return list;
+        return matches.getMatches(categoryId);
     }
 
-    /** Every match in which a team or participant of this branch plays. */
     @Override
     public List<Match> getMatchesOfBranch(String branchId) {
-        List<Match> list = new ArrayList<>();
-        Cursor c = query(MATCH_SELECT + "WHERE ra.branch_id = ? OR rb.branch_id = ?"
-                + MATCH_ORDER, branchId, branchId);
-        try {
-            while (c.moveToNext()) {
-                list.add(readMatch(c));
-            }
-        } finally {
-            c.close();
-        }
-        return list;
+        return matches.getMatchesOfBranch(branchId);
     }
 
     @Override
     public Match getMatch(String id) {
-        if (id == null) {
-            return null;
-        }
-        Cursor c = query(MATCH_SELECT + "WHERE m.id = ?", id);
-        try {
-            return c.moveToFirst() ? readMatch(c) : null;
-        } finally {
-            c.close();
-        }
+        return matches.getMatch(id);
     }
 
     @Override
     public String saveFixture(User actorArg, Match match) {
-        User actor = actorIn(actorArg,
-                match.id == null ? sportOfCategory(match.categoryId) : sportOfMatch(match.id));
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor,
-                "create or edit fixtures");
-
-        // An existing fixture stays in its category, whatever the screen sent.
-        Match storedFixture = match.id == null ? null : getMatch(match.id);
-        if (storedFixture != null) {
-            match.categoryId = storedFixture.categoryId;
-        }
-        Category category = getCategory(match.categoryId);
-        if (category == null) {
-            throw new ValidationException("The category of this fixture no longer exists.");
-        }
-        if (match.teamAId == null || match.teamBId == null) {
-            throw new ValidationException("Choose both sides of the fixture.");
-        }
-        if (match.teamAId.equals(match.teamBId)) {
-            throw new ValidationException("A team cannot play against itself.");
-        }
-        checkSide(match.teamAId, category);
-        checkSide(match.teamBId, category);
-
-        String date = clean(match.date);
-        String time = clean(match.time);
-        String round = clean(match.round);
-        if (!DateUtil.isValidDate(date)) {
-            throw new ValidationException("Choose the match date.");
-        }
-        if (!time.isEmpty() && !DateUtil.isValidTime(time)) {
-            throw new ValidationException("The match time must look like 16:30.");
-        }
-        if (round.isEmpty()) {
-            throw new ValidationException("Round or stage is required.");
-        }
-        if (match.assignedTo != null) {
-            User assignee = getUser(match.assignedTo);
-            if (assignee == null || !AccessControl.isAsooCore(assignee)) {
-                throw new ValidationException("A match can only be assigned to an Asoo Core.");
-            }
-        }
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        ContentValues cv = new ContentValues();
-        cv.put("team_a_id", match.teamAId);
-        cv.put("team_b_id", match.teamBId);
-        cv.put("match_date", date);
-        cv.put("match_time", time);
-        cv.put("venue", clean(match.venue));
-
-        // The CricHeroes link: optional, cricket only, and it must be a CricHeroes address.
-        String link = clean(match.externalUrl);
-        if (!link.isEmpty()) {
-            if (!SportTemplate.ENGINE_CRICKET.equals(category.engine)) {
-                throw new ValidationException("A live-score link can only be added to a "
-                        + "cricket fixture.");
-            }
-            String problem = LiveLink.problemWith(link);
-            if (problem != null) {
-                throw new ValidationException(problem);
-            }
-        }
-        cv.put("external_url", link);
-        cv.put("round", round);
-        if (match.assignedTo == null) {
-            cv.putNull("assigned_to");
-        } else {
-            cv.put("assigned_to", match.assignedTo);
-        }
-        cv.put("updated_at", System.currentTimeMillis());
-        cv.put("updated_by", actor.id);
-
-        if (match.id == null) {
-            String id = newId();
-            cv.put("id", id);
-            cv.put("category_id", category.id);
-            cv.put("status", Match.STATUS_UPCOMING);
-            cv.put("is_final", 0);
-            cv.put("version", 1);
-            db.insertOrThrow("matches", null, cv);
-            return id;
-        }
-
-        Match existing = requireMatch(match.id);
-        boolean sidesChanged = !existing.teamAId.equals(match.teamAId)
-                || !existing.teamBId.equals(match.teamBId);
-        if (sidesChanged && existing.hasScore()) {
-            throw new ValidationException("This match already has a score, so its teams "
-                    + "cannot be changed.");
-        }
-        cv.put("version", match.version + 1);
-        int rows = db.update("matches", cv, "id = ? AND version = ?",
-                new String[]{match.id, String.valueOf(match.version)});
-        if (rows == 0) {
-            throw new ConflictException("Someone else changed this match while you were "
-                    + "editing it. Your changes were not saved. Open it again and retry.");
-        }
-        return match.id;
-    }
-
-    /** A side of a fixture must be an approved registration of the same category. */
-    private void checkSide(String registrationId, Category category) {
-        Cursor c = query(REG_SELECT + "WHERE r.id = ?", registrationId);
-        try {
-            if (!c.moveToFirst()) {
-                throw new ValidationException("One of the chosen sides no longer exists.");
-            }
-            Registration r = readRegistration(c);
-            if (!category.id.equals(r.categoryId)) {
-                throw new ValidationException(r.name + " is not registered in this category.");
-            }
-            if (!r.isApproved()) {
-                throw new ValidationException(r.name + " is not approved yet.");
-            }
-        } finally {
-            c.close();
-        }
+        return matches.saveFixture(actorArg, match);
     }
 
     @Override
     public void deleteFixture(User actorArg, String id) {
-        User actor = actorIn(actorArg, sportOfMatch(id));
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor, "delete fixtures");
-        // The score history of the match is removed with it (ON DELETE CASCADE).
-        helper.getWritableDatabase().delete("matches", "id = ?", new String[]{id});
-    }
-
-    // ----- Who may score, and when -----
-
-    /**
-     * Common checks before any score is written: the actor may score this match, the
-     * result is not final, and the match has actually started.
-     */
-    private void requireScoring(User actor, Match match) {
-        AccessControl.require(AccessControl.canUpdateScore(actor, match), actor,
-                "update the score of this match");
-        if (match.isFinal) {
-            throw new ValidationException("This result is final. It has to be reopened with "
-                    + "a reason before the score can change.");
-        }
-        if (!Match.STATUS_LIVE.equals(match.status)
-                && !Match.STATUS_COMPLETED.equals(match.status)) {
-            throw new ValidationException("Scores can only be entered while the match is "
-                    + "Live. Its status is " + match.status + ": start or resume it first.");
-        }
-    }
-
-    private void requireEngine(Match match, String engine, String what) {
-        if (!match.usesEngine(engine)) {
-            throw new ValidationException("This category is not scored " + what + ".");
-        }
-    }
-
-    // ----- Status -----
-
-    /** Start, pause, resume, postpone or complete a match without touching its score. */
-    @Override
-    public void setMatchStatus(User actorArg, String matchId, int expectedVersion,
-                               String status) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        Match match = requireMatch(matchId);
-        AccessControl.require(AccessControl.canUpdateScore(actor, match), actor,
-                "change the status of this match");
-        if (match.isFinal) {
-            throw new ValidationException("This result is final, so its status cannot change.");
-        }
-        if (!Match.isValidStatus(status)) {
-            throw new ValidationException("Choose a valid match status.");
-        }
-        if (Match.STATUS_COMPLETED.equals(status)) {
-            checkCanComplete(match);
-        }
-        ContentValues cv = new ContentValues();
-        cv.put("status", status);
-        writeMatch(match, expectedVersion, cv, actor, ScoreAudit.ACTION_STATUS,
-                describe(match.scoreA, match.scoreB, status), "");
-    }
-
-    /** A match can be marked completed only when it has a result. */
-    private void checkCanComplete(Match match) {
-        if (!match.hasScore()) {
-            throw new ValidationException("Enter the score before marking the match as "
-                    + "completed.");
-        }
-        if (match.usesEngine(SportTemplate.ENGINE_SETS)
-                && setState(match, getPeriods(match.id)).winner == SetScoring.NOBODY) {
-            throw new ValidationException("This match is not decided yet: neither side has "
-                    + "won enough " + SetRules.from(match.rules()).unit.toLowerCase() + "s.");
-        }
-    }
-
-    // ----- One score for each side: football, basketball; and win/draw/loss: chess -----
-
-    @Override
-    public void updateScore(User actorArg, String matchId, int expectedVersion,
-                            Integer scoreA, Integer scoreB, String note, String status) {
-        Match current = requireMatch(matchId);
-        updateScore(actorArg, matchId, expectedVersion, scoreA, scoreB, note, status,
-                current.currentPeriod, current.penA, current.penB);
+        matches.deleteFixture(actorArg, id);
     }
 
     @Override
-    public void updateScore(User actorArg, String matchId, int expectedVersion,
-                            Integer scoreA, Integer scoreB, String note, String status,
-                            int currentPeriod, Integer penA, Integer penB) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        Match match = requireMatch(matchId);
-        AccessControl.require(AccessControl.canUpdateScore(actor, match), actor,
-                "update the score of this match");
-
-        // An ordinary update must never overwrite a final result.
-        if (match.isFinal) {
-            throw new ValidationException("This result is final. Use \"Correct final result\" "
-                    + "and give a reason.");
-        }
-        boolean result = match.usesEngine(SportTemplate.ENGINE_RESULT);
-        if (!result && !match.usesEngine(SportTemplate.ENGINE_SCORE)) {
-            throw new ValidationException("This category has its own way of scoring. Use the "
-                    + "scoring controls shown for it.");
-        }
-        if (!Match.isValidStatus(status)) {
-            throw new ValidationException("Choose a valid match status.");
-        }
-        checkScores(scoreA, scoreB, Match.STATUS_COMPLETED.equals(status));
-        if (scoreA != null && (Match.STATUS_UPCOMING.equals(status)
-                || Match.STATUS_POSTPONED.equals(status))) {
-            throw new ValidationException("A match that is " + status.toLowerCase()
-                    + " cannot have a score. Set it to Live first.");
-        }
-        if (result && scoreA != null && !isResultScore(scoreA, scoreB)) {
-            throw new ValidationException("Choose a result: a win for one side, or a draw.");
-        }
-
-        RuleSet rules = match.rules();
-        int periods = rules.getInt("periods", 0);
-        if (currentPeriod < 0 || (periods > 0 && currentPeriod > periods + 2)) {
-            throw new ValidationException("That period does not exist in this match.");
-        }
-        if ((penA == null) != (penB == null)) {
-            throw new ValidationException("Enter the penalty score of both sides.");
-        }
-        if (penA != null) {
-            if (penA < 0 || penB < 0) {
-                throw new ValidationException("Penalty scores cannot be negative.");
-            }
-            if (scoreA == null || !scoreA.equals(scoreB)) {
-                throw new ValidationException("A penalty shoot-out is only recorded when "
-                        + "the score is level.");
-            }
-        }
-
-        ContentValues cv = new ContentValues();
-        putScore(cv, scoreA, scoreB);
-        cv.put("score_note", clean(note));
-        cv.put("status", status);
-        cv.put("current_period", currentPeriod);
-        if (penA == null) {
-            cv.putNull("pen_a");
-            cv.putNull("pen_b");
-        } else {
-            cv.put("pen_a", penA);
-            cv.put("pen_b", penB);
-        }
-        String newScore = describe(scoreA, scoreB, status)
-                + (penA == null ? "" : ", penalties " + penA + " - " + penB);
-        writeMatch(match, expectedVersion, cv, actor, ScoreAudit.ACTION_SCORE_UPDATE, newScore, "");
+    public void setMatchStatus(User actorArg, String matchId, int expectedVersion, String status) {
+        matches.setMatchStatus(actorArg, matchId, expectedVersion, status);
     }
 
-    /** Win/draw/loss results are stored as 1-0, 0-1 and 1-1. */
-    private static boolean isResultScore(int a, int b) {
-        return (a == 1 && b == 0) || (a == 0 && b == 1) || (a == 1 && b == 1);
+    @Override
+    public void updateScore(User actorArg, String matchId, int expectedVersion, Integer scoreA,
+            Integer scoreB, String note, String status) {
+        matches.updateScore(actorArg, matchId, expectedVersion, scoreA, scoreB, note, status);
     }
 
-    // ----- Sets, games, frames, pulls -----
+    @Override
+    public void updateScore(User actorArg, String matchId, int expectedVersion, Integer scoreA,
+            Integer scoreB, String note, String status, int currentPeriod, Integer penA, Integer penB) {
+        matches.updateScore(actorArg, matchId, expectedVersion, scoreA, scoreB, note, status, currentPeriod, penA, penB);
+    }
 
     @Override
     public List<MatchPeriod> getPeriods(String matchId) {
-        List<MatchPeriod> list = new ArrayList<>();
-        Cursor c = query("SELECT * FROM match_periods WHERE match_id = ? ORDER BY number",
-                matchId);
-        try {
-            while (c.moveToNext()) {
-                MatchPeriod p = new MatchPeriod();
-                p.id = text(c, "id");
-                p.matchId = text(c, "match_id");
-                p.number = number(c, "number");
-                p.side = text(c, "side");
-                p.scoreA = number(c, "score_a");
-                p.scoreB = number(c, "score_b");
-                p.wickets = number(c, "wickets");
-                p.balls = number(c, "balls");
-                p.extras = number(c, "extras");
-                p.tbA = number(c, "tb_a");
-                p.tbB = number(c, "tb_b");
-                p.ptA = number(c, "pt_a");
-                p.ptB = number(c, "pt_b");
-                list.add(p);
-            }
-        } finally {
-            c.close();
-        }
-        return list;
+        return matches.getPeriods(matchId);
     }
 
-    private static SetScoring.State setState(Match match, List<MatchPeriod> periods) {
-        List<int[]> sets = new ArrayList<>();
-        for (MatchPeriod p : periods) {
-            sets.add(new int[]{p.scoreA, p.scoreB});
-        }
-        return SetScoring.evaluate(SetRules.from(match.rules()), sets);
-    }
-
-    /**
-     * Saves the score of one set. Used for every point (the screen sends the new total of
-     * the set) and for correcting an earlier set. The whole match is then recalculated:
-     * sets won by each side, and "Completed" as soon as one side has won enough sets.
-     */
     @Override
     public void saveSetScore(User actorArg, String matchId, int expectedVersion, int setNumber,
-                             int scoreA, int scoreB, int tieBreakA, int tieBreakB) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        Match match = requireMatch(matchId);
-        requireScoring(actor, match);
-        requireEngine(match, SportTemplate.ENGINE_SETS, "in sets");
-
-        List<MatchPeriod> periods = getPeriods(matchId);
-        if (setNumber < 1 || setNumber > periods.size() + 1) {
-            throw new ValidationException("Score the parts of the match in order.");
-        }
-        MatchPeriod set = setNumber <= periods.size() ? periods.get(setNumber - 1)
-                : newPeriod(matchId, setNumber);
-        if (setNumber > periods.size()) {
-            periods.add(set);
-        }
-        set.scoreA = scoreA;
-        set.scoreB = scoreB;
-        set.tbA = tieBreakA;
-        set.tbB = tieBreakB;
-        // Editing the totals directly ends any game that was being counted point by point.
-        set.ptA = 0;
-        set.ptB = 0;
-        storeSets(match, expectedVersion, actor, periods, set);
+            int scoreA, int scoreB, int tieBreakA, int tieBreakB) {
+        matches.saveSetScore(actorArg, matchId, expectedVersion, setNumber, scoreA, scoreB, tieBreakA, tieBreakB);
     }
 
-    /**
-     * Lawn tennis, point by point. One call is one point won by side "A" or "B". The
-     * point is added to the game in play; a won game is added to the set; at the
-     * tie-break score the points count towards the tie-break instead.
-     */
     @Override
-    public void scoreTennisPoint(User actorArg, String matchId, int expectedVersion,
-                                 String side) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        Match match = requireMatch(matchId);
-        requireScoring(actor, match);
-        requireEngine(match, SportTemplate.ENGINE_SETS, "in sets");
-        SetRules rules = SetRules.from(match.rules());
-        if (!rules.pointByPoint) {
-            throw new ValidationException("This category is not scored point by point.");
-        }
-        boolean toA = "A".equals(side);
-        if (!toA && !"B".equals(side)) {
-            throw new ValidationException("Choose which side won the point.");
-        }
-
-        List<MatchPeriod> periods = getPeriods(matchId);
-        SetScoring.State state = setState(match, periods);
-        if (state.error != null) {
-            throw new ValidationException(state.error);
-        }
-        if (state.currentSet == 0) {
-            throw new ValidationException("This match is already decided.");
-        }
-        MatchPeriod set;
-        if (state.currentSet <= periods.size()) {
-            set = periods.get(state.currentSet - 1);
-        } else {
-            set = newPeriod(matchId, state.currentSet);
-            periods.add(set);
-        }
-
-        int n = set.number;
-        if (rules.isDeciding(n) && rules.decidingMatchTiebreak) {
-            // The deciding "set" is a single tie-break: every point counts directly.
-            if (toA) {
-                set.scoreA++;
-            } else {
-                set.scoreB++;
-            }
-        } else if (rules.tiebreakIn(n) && set.scoreA == rules.tiebreakAt
-                && set.scoreB == rules.tiebreakAt) {
-            // Tie-break game at, for example, 6-6.
-            if (toA) {
-                set.tbA++;
-            } else {
-                set.tbB++;
-            }
-            int won = TennisGame.tiebreakWinner(set.tbA, set.tbB, rules.tiebreakPoints);
-            if (won == SetScoring.SIDE_A) {
-                set.scoreA++;
-            } else if (won == SetScoring.SIDE_B) {
-                set.scoreB++;
-            }
-        } else {
-            // An ordinary game: 0, 15, 30, 40, deuce, advantage.
-            if (toA) {
-                set.ptA++;
-            } else {
-                set.ptB++;
-            }
-            int won = TennisGame.winner(set.ptA, set.ptB, rules.noAd);
-            if (won != SetScoring.NOBODY) {
-                if (won == SetScoring.SIDE_A) {
-                    set.scoreA++;
-                } else {
-                    set.scoreB++;
-                }
-                set.ptA = 0;
-                set.ptB = 0;
-            }
-        }
-        storeSets(match, expectedVersion, actor, periods, set);
+    public void scoreTennisPoint(User actorArg, String matchId, int expectedVersion, String side) {
+        matches.scoreTennisPoint(actorArg, matchId, expectedVersion, side);
     }
 
-    private static MatchPeriod newPeriod(String matchId, int number) {
-        MatchPeriod p = new MatchPeriod();
-        p.matchId = matchId;
-        p.number = number;
-        return p;
-    }
-
-    /**
-     * Validates the complete list of sets, then saves the changed set and the new match
-     * totals together. Nothing is written when the list is not consistent.
-     */
-    private void storeSets(Match match, int expectedVersion, User actor,
-                           List<MatchPeriod> periods, MatchPeriod changed) {
-        SetRules rules = SetRules.from(match.rules());
-        SetScoring.State state = setState(match, periods);
-        if (state.error != null) {
-            throw new ValidationException(state.error);
-        }
-        // A 7-6 set needs the tie-break score that produced it.
-        int high = Math.max(changed.scoreA, changed.scoreB);
-        int low = Math.min(changed.scoreA, changed.scoreB);
-        boolean endedByTiebreak = rules.tiebreakIn(changed.number)
-                && high == rules.tiebreakAt + 1 && low == rules.tiebreakAt;
-        if (endedByTiebreak) {
-            int won = TennisGame.tiebreakWinner(changed.tbA, changed.tbB, rules.tiebreakPoints);
-            int expected = changed.scoreA > changed.scoreB ? SetScoring.SIDE_A : SetScoring.SIDE_B;
-            if (won != expected) {
-                throw new ValidationException("Enter the tie-break score that decided this "
-                        + rules.unit.toLowerCase() + ", for example 7-5.");
-            }
-        } else if (!(rules.tiebreakIn(changed.number) && high == rules.tiebreakAt
-                && low == rules.tiebreakAt)) {
-            // Tie-break points only exist while a tie-break is being played.
-            changed.tbA = 0;
-            changed.tbB = 0;
-        }
-
-        // A decided match becomes Completed; a correction that undecides it goes back to Live.
-        String status = state.winner != SetScoring.NOBODY ? Match.STATUS_COMPLETED
-                : Match.STATUS_LIVE;
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            ContentValues row = new ContentValues();
-            row.put("score_a", changed.scoreA);
-            row.put("score_b", changed.scoreB);
-            row.put("tb_a", changed.tbA);
-            row.put("tb_b", changed.tbB);
-            row.put("pt_a", changed.ptA);
-            row.put("pt_b", changed.ptB);
-            if (changed.id == null) {
-                row.put("id", newId());
-                row.put("match_id", match.id);
-                row.put("number", changed.number);
-                db.insertOrThrow("match_periods", null, row);
-            } else {
-                db.update("match_periods", row, "id = ?", new String[]{changed.id});
-            }
-
-            ContentValues cv = new ContentValues();
-            cv.put("score_a", state.setsA);
-            cv.put("score_b", state.setsB);
-            cv.put("status", status);
-            writeMatch(match, expectedVersion, cv, actor, ScoreAudit.ACTION_SCORE_UPDATE,
-                    rules.unit + " " + changed.number + ": " + changed.scoreA + " - "
-                            + changed.scoreB + "; " + describe(state.setsA, state.setsB, status),
-                    "");
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
-    }
-
-    // ----- Cricket innings -----
-
-    /**
-     * Saves the summary of one innings. Ball-by-ball scoring is done in CricHeroes; this
-     * records the totals so that results and tables work inside FLAVIUM Arena.
-     */
     @Override
     public void saveInnings(User actorArg, String matchId, int expectedVersion, int number,
-                            String side, int runs, int wickets, int overs, int ballsInOver,
-                            int extras) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        Match match = requireMatch(matchId);
-        requireScoring(actor, match);
-        requireEngine(match, SportTemplate.ENGINE_CRICKET, "by innings");
-
-        RuleSet rules = match.rules();
-        int maxInnings = Math.max(1, rules.getInt("innings_per_side", 1)) * 2;
-        int maxOvers = Math.max(1, rules.getInt("overs", 50));
-        int maxWickets = Math.max(1, rules.getInt(RuleSet.TEAM_MIN, 11) - 1);
-        if (number < 1 || number > maxInnings) {
-            throw new ValidationException("This match has " + maxInnings + " innings.");
-        }
-        if (!"A".equals(side) && !"B".equals(side)) {
-            throw new ValidationException("Choose which side batted.");
-        }
-        if (runs < 0 || extras < 0 || wickets < 0 || overs < 0 || ballsInOver < 0) {
-            throw new ValidationException("Innings figures cannot be negative.");
-        }
-        if (wickets > maxWickets) {
-            throw new ValidationException("At most " + maxWickets + " wickets can fall.");
-        }
-        if (ballsInOver > 5) {
-            throw new ValidationException("An over has six balls, so the balls part is 0 to 5.");
-        }
-        int balls = overs * 6 + ballsInOver;
-        if (balls > maxOvers * 6) {
-            throw new ValidationException("An innings is limited to " + maxOvers + " overs.");
-        }
-        if (extras > runs) {
-            throw new ValidationException("Extras are part of the total, so they cannot be "
-                    + "more than the runs.");
-        }
-
-        List<MatchPeriod> periods = getPeriods(matchId);
-        if (number > periods.size() + 1) {
-            throw new ValidationException("Enter the innings in order.");
-        }
-        // The two sides bat alternately.
-        if (number > 1 && periods.get(number - 2).side.equals(side)) {
-            throw new ValidationException("The same side cannot bat in two innings in a row.");
-        }
-        MatchPeriod innings = number <= periods.size() ? periods.get(number - 1)
-                : newPeriod(matchId, number);
-        if (number > periods.size()) {
-            periods.add(innings);
-        }
-        innings.side = side;
-        innings.scoreA = runs;
-        innings.wickets = wickets;
-        innings.balls = balls;
-        innings.extras = extras;
-
-        int runsA = 0;
-        int runsB = 0;
-        for (MatchPeriod p : periods) {
-            if ("A".equals(p.side)) {
-                runsA += p.scoreA;
-            } else {
-                runsB += p.scoreA;
-            }
-        }
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            ContentValues row = new ContentValues();
-            row.put("side", side);
-            row.put("score_a", runs);
-            row.put("wickets", wickets);
-            row.put("balls", balls);
-            row.put("extras", extras);
-            if (innings.id == null) {
-                row.put("id", newId());
-                row.put("match_id", matchId);
-                row.put("number", number);
-                db.insertOrThrow("match_periods", null, row);
-            } else {
-                db.update("match_periods", row, "id = ?", new String[]{innings.id});
-            }
-            ContentValues cv = new ContentValues();
-            cv.put("score_a", runsA);
-            cv.put("score_b", runsB);
-            writeMatch(match, expectedVersion, cv, actor, ScoreAudit.ACTION_SCORE_UPDATE,
-                    "Innings " + number + " (side " + side + "): " + runs + "/" + wickets
-                            + " in " + innings.oversText() + " overs; "
-                            + describe(runsA, runsB, match.status), "");
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
+            String side, int runs, int wickets, int overs, int ballsInOver, int extras) {
+        matches.saveInnings(actorArg, matchId, expectedVersion, number, side, runs, wickets, overs, ballsInOver, extras);
     }
-
-    // ----- Match events -----
 
     @Override
     public List<MatchEvent> getEvents(String matchId) {
-        List<MatchEvent> list = new ArrayList<>();
-        Cursor c = query("SELECT * FROM match_events WHERE match_id = ? "
-                + "ORDER BY minute, created_at", matchId);
-        try {
-            while (c.moveToNext()) {
-                MatchEvent e = new MatchEvent();
-                e.id = text(c, "id");
-                e.matchId = text(c, "match_id");
-                e.minute = number(c, "minute");
-                e.side = text(c, "side");
-                e.type = text(c, "type");
-                e.player = text(c, "player");
-                e.createdAt = c.getLong(c.getColumnIndexOrThrow("created_at"));
-                list.add(e);
-            }
-        } finally {
-            c.close();
-        }
-        return list;
+        return matches.getEvents(matchId);
     }
 
     @Override
     public String addEvent(User actorArg, String matchId, int minute, String side, String type,
-                           String player) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        Match match = requireMatch(matchId);
-        requireScoring(actor, match);
-        if (!"A".equals(side) && !"B".equals(side)) {
-            throw new ValidationException("Choose the side the event belongs to.");
-        }
-        if (clean(type).isEmpty()) {
-            throw new ValidationException("Choose the kind of event.");
-        }
-        if (minute < 0 || minute > 300) {
-            throw new ValidationException("Enter the minute of the match (0 to 300).");
-        }
-        String id = newId();
-        ContentValues cv = new ContentValues();
-        cv.put("id", id);
-        cv.put("match_id", matchId);
-        cv.put("minute", minute);
-        cv.put("side", side);
-        cv.put("type", clean(type));
-        cv.put("player", clean(player));
-        cv.put("created_by", actor.id);
-        cv.put("created_at", System.currentTimeMillis());
-        helper.getWritableDatabase().insertOrThrow("match_events", null, cv);
-        return id;
+            String player) {
+        return matches.addEvent(actorArg, matchId, minute, side, type, player);
     }
 
     @Override
     public void deleteEvent(User actorArg, String eventId) {
-        User actor = actorIn(actorArg, sportOfMatchEvent(eventId));
-        String matchId = null;
-        Cursor c = query("SELECT match_id FROM match_events WHERE id = ?", eventId);
-        try {
-            if (c.moveToFirst()) {
-                matchId = c.getString(0);
-            }
-        } finally {
-            c.close();
-        }
-        if (matchId == null) {
-            throw new ValidationException("This event no longer exists.");
-        }
-        requireScoring(actor, requireMatch(matchId));
-        helper.getWritableDatabase().delete("match_events", "id = ?", new String[]{eventId});
+        matches.deleteEvent(actorArg, eventId);
     }
-
-    // ----- Finalising, reopening and correcting -----
 
     @Override
     public void finaliseMatch(User actorArg, String matchId, int expectedVersion) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        AccessControl.require(AccessControl.canFinaliseResults(actor,
-                getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "finalise results");
-
-        Match match = requireMatch(matchId);
-        if (match.isFinal) {
-            throw new ValidationException("This result is already final.");
-        }
-        if (!Match.STATUS_COMPLETED.equals(match.status) || !match.hasScore()) {
-            throw new ValidationException("Only a completed match with a score can be "
-                    + "finalised.");
-        }
-        checkCanComplete(match);
-        checkHasWinnerIfNeeded(match, match.scoreA, match.scoreB);
-
-        ContentValues cv = new ContentValues();
-        cv.put("is_final", 1);
-        writeMatch(match, expectedVersion, cv, actor, ScoreAudit.ACTION_FINALISED,
-                match.scoreText() + " (FINAL)", "");
+        matches.finaliseMatch(actorArg, matchId, expectedVersion);
     }
 
-    /**
-     * Takes a final result back to "completed, not final" so that it can be corrected
-     * with the normal scoring controls and finalised again. A reason is required and is
-     * kept in the score history, so a final result is never changed silently.
-     */
     @Override
     public void reopenMatch(User actorArg, String matchId, int expectedVersion, String reason) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        AccessControl.require(AccessControl.canFinaliseResults(actor,
-                getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "reopen final results");
-
-        Match match = requireMatch(matchId);
-        if (!match.isFinal) {
-            throw new ValidationException("This result is not final, so it does not need "
-                    + "reopening.");
-        }
-        if (clean(reason).isEmpty()) {
-            throw new ValidationException("Give a reason for reopening a final result.");
-        }
-        ContentValues cv = new ContentValues();
-        cv.put("is_final", 0);
-        writeMatch(match, expectedVersion, cv, actor, ScoreAudit.ACTION_REOPENED,
-                describe(match.scoreA, match.scoreB, Match.STATUS_COMPLETED), clean(reason));
+        matches.reopenMatch(actorArg, matchId, expectedVersion, reason);
     }
 
     @Override
     public void correctFinalResult(User actorArg, String matchId, int expectedVersion,
-                                   Integer scoreA, Integer scoreB, String note, String reason) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        AccessControl.require(AccessControl.canFinaliseResults(actor,
-                getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "correct final results");
-
-        Match match = requireMatch(matchId);
-        if (!match.isFinal) {
-            throw new ValidationException("This result is not final yet. Update the score "
-                    + "normally.");
-        }
-        boolean result = match.usesEngine(SportTemplate.ENGINE_RESULT);
-        if (!result && !match.usesEngine(SportTemplate.ENGINE_SCORE)) {
-            throw new ValidationException("Reopen this result with a reason, correct it with "
-                    + "the scoring controls, and finalise it again.");
-        }
-        if (clean(reason).isEmpty()) {
-            throw new ValidationException("Give a reason for correcting a final result.");
-        }
-        checkScores(scoreA, scoreB, true);
-        if (result && !isResultScore(scoreA, scoreB)) {
-            throw new ValidationException("Choose a result: a win for one side, or a draw.");
-        }
-        // A corrected score makes any recorded shoot-out meaningless unless still level.
-        boolean keepPenalties = scoreA.equals(scoreB) && match.penA != null;
-        if (!keepPenalties) {
-            match.penA = null;
-            match.penB = null;
-        }
-        checkHasWinnerIfNeeded(match, scoreA, scoreB);
-
-        ContentValues cv = new ContentValues();
-        putScore(cv, scoreA, scoreB);
-        cv.put("score_note", clean(note));
-        if (!keepPenalties) {
-            cv.putNull("pen_a");
-            cv.putNull("pen_b");
-        }
-        writeMatch(match, expectedVersion, cv, actor, ScoreAudit.ACTION_CORRECTION,
-                scoreA + " - " + scoreB + " (FINAL)", clean(reason));
-    }
-
-    /**
-     * A knockout match, and any category whose rules say a match may not end in a draw,
-     * needs a winner. A level score is accepted only with a decisive penalty shoot-out.
-     */
-    private static void checkHasWinnerIfNeeded(Match match, Integer scoreA, Integer scoreB) {
-        boolean drawForbidden = Category.FORMAT_KNOCKOUT.equals(match.categoryFormat)
-                || RuleSet.NO.equals(match.rules().get("allow_draw", ""));
-        if (!drawForbidden || !scoreA.equals(scoreB)) {
-            return;
-        }
-        if (match.penA != null && match.penB != null && !match.penA.equals(match.penB)) {
-            return;
-        }
-        throw new ValidationException("This match needs a winner, so the final score cannot "
-                + "be a draw. Record the deciding shoot-out or correct the score.");
-    }
-
-    /**
-     * Saves a change to a match and records it in the score history, as one transaction.
-     * The update only succeeds when the row still has the version the screen loaded.
-     * If another organiser saved first, nothing is written and a ConflictException is thrown.
-     */
-    private void writeMatch(Match before, int expectedVersion, ContentValues cv, User actor,
-                            String action, String newScore, String reason) {
-        long now = System.currentTimeMillis();
-        cv.put("version", expectedVersion + 1);
-        cv.put("updated_at", now);
-        cv.put("updated_by", actor.id);
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            int rows = db.update("matches", cv, "id = ? AND version = ?",
-                    new String[]{before.id, String.valueOf(expectedVersion)});
-            if (rows == 0) {
-                throw new ConflictException("Someone else updated this match a moment ago. "
-                        + "Your change was not saved. Check the latest score and try again.");
-            }
-            ContentValues audit = new ContentValues();
-            audit.put("id", newId());
-            audit.put("match_id", before.id);
-            audit.put("changed_by", actor.id);
-            audit.put("changed_at", now);
-            audit.put("action", action);
-            audit.put("old_score", describe(before.scoreA, before.scoreB, before.statusLabel()));
-            audit.put("new_score", newScore);
-            audit.put("reason", reason);
-            db.insertOrThrow("score_audit", null, audit);
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
-    }
-
-    private static void checkScores(Integer scoreA, Integer scoreB, boolean required) {
-        if ((scoreA == null) != (scoreB == null)) {
-            throw new ValidationException("Enter the score of both sides.");
-        }
-        if (scoreA == null) {
-            if (required) {
-                throw new ValidationException("Enter the score before marking the match "
-                        + "as completed.");
-            }
-            return;
-        }
-        if (scoreA < 0 || scoreB < 0) {
-            throw new ValidationException("Scores cannot be negative.");
-        }
-    }
-
-    private static void putScore(ContentValues cv, Integer scoreA, Integer scoreB) {
-        if (scoreA == null || scoreB == null) {
-            cv.putNull("score_a");
-            cv.putNull("score_b");
-        } else {
-            cv.put("score_a", scoreA);
-            cv.put("score_b", scoreB);
-        }
-    }
-
-    private static String describe(Integer scoreA, Integer scoreB, String status) {
-        String score = scoreA == null || scoreB == null ? "no score" : scoreA + " - " + scoreB;
-        return score + " (" + status + ")";
-    }
-
-    private Match requireMatch(String id) {
-        Match match = getMatch(id);
-        if (match == null) {
-            throw new ValidationException("This match no longer exists.");
-        }
-        return match;
+            Integer scoreA, Integer scoreB, String note, String reason) {
+        matches.correctFinalResult(actorArg, matchId, expectedVersion, scoreA, scoreB, note, reason);
     }
 
     @Override
     public List<ScoreAudit> getScoreAudit(User actorArg, String matchId) {
-        User actor = actorIn(actorArg, sportOfMatch(matchId));
-        AccessControl.require(AccessControl.canViewScoreHistory(actor), actor,
-                "view the score history");
-
-        List<ScoreAudit> list = new ArrayList<>();
-        Cursor c = query("SELECT a.*, u.name AS changed_by_name FROM score_audit a "
-                + "LEFT JOIN users u ON u.id = a.changed_by "
-                + "WHERE a.match_id = ? ORDER BY a.changed_at DESC, a.rowid DESC", matchId);
-        try {
-            while (c.moveToNext()) {
-                ScoreAudit a = new ScoreAudit();
-                a.id = text(c, "id");
-                a.matchId = text(c, "match_id");
-                a.changedByName = text(c, "changed_by_name");
-                a.changedAt = c.getLong(c.getColumnIndexOrThrow("changed_at"));
-                a.action = text(c, "action");
-                a.oldScore = text(c, "old_score");
-                a.newScore = text(c, "new_score");
-                a.reason = text(c, "reason");
-                list.add(a);
-            }
-        } finally {
-            c.close();
-        }
-        return list;
+        return matches.getScoreAudit(actorArg, matchId);
     }
 
     // =====================================================================
-    // Heats and finals: races, relays, swimming, discus, shot put
+    // Heats and finals: see EventStore
     // =====================================================================
-
-    private static final String ROUND_SELECT =
-            "SELECT r.*, c.name AS category_name, c.engine AS category_engine, "
-                    + "c.rules AS category_rules, s.name AS sport_name, s.id AS sport_id, "
-                    + "ua.name AS assigned_name, ub.name AS updated_by_name, "
-                    + "(SELECT COUNT(*) FROM event_entries e WHERE e.round_id = r.id) "
-                    + "AS entry_count "
-                    + "FROM event_rounds r "
-                    + "JOIN categories c ON c.id = r.category_id "
-                    + "JOIN sports s ON s.id = c.sport_id "
-                    + "LEFT JOIN users ua ON ua.id = r.assigned_to "
-                    + "LEFT JOIN users ub ON ub.id = r.updated_by ";
 
     @Override
     public List<EventRound> getRounds(String categoryId) {
-        List<EventRound> list = new ArrayList<>();
-        // Heats first, in number order, then the final. Without a category: every
-        // heat and final of the festival, by date.
-        Cursor c = categoryId == null
-                ? query(ROUND_SELECT + "ORDER BY r.event_date, r.event_time, c.name, "
-                + "r.stage = 'FINAL', r.heat_number")
-                : query(ROUND_SELECT + "WHERE r.category_id = ? "
-                + "ORDER BY r.stage = 'FINAL', r.heat_number", categoryId);
-        try {
-            while (c.moveToNext()) {
-                list.add(readRound(c));
-            }
-        } finally {
-            c.close();
-        }
-        return list;
+        return events.getRounds(categoryId);
     }
 
     @Override
     public EventRound getRound(String id) {
-        if (id == null) {
-            return null;
-        }
-        Cursor c = query(ROUND_SELECT + "WHERE r.id = ?", id);
-        try {
-            return c.moveToFirst() ? readRound(c) : null;
-        } finally {
-            c.close();
-        }
-    }
-
-    private static EventRound readRound(Cursor c) {
-        EventRound r = new EventRound();
-        r.id = text(c, "id");
-        r.categoryId = text(c, "category_id");
-        r.stage = text(c, "stage");
-        r.heatNumber = number(c, "heat_number");
-        r.date = text(c, "event_date");
-        r.time = text(c, "event_time");
-        r.venue = text(c, "venue");
-        r.status = text(c, "status");
-        r.isFinal = number(c, "is_final") == 1;
-        r.assignedTo = textOrNull(c, "assigned_to");
-        r.updatedAt = c.getLong(c.getColumnIndexOrThrow("updated_at"));
-        r.updatedBy = textOrNull(c, "updated_by");
-        r.version = number(c, "version");
-        r.categoryName = text(c, "category_name");
-        r.categoryEngine = text(c, "category_engine");
-        r.categoryRules = text(c, "category_rules");
-        r.sportName = text(c, "sport_name");
-        r.sportId = text(c, "sport_id");
-        r.assignedName = text(c, "assigned_name");
-        r.updatedByName = text(c, "updated_by_name");
-        r.entryCount = number(c, "entry_count");
-        return r;
-    }
-
-    private EventRound requireRound(String id) {
-        EventRound round = getRound(id);
-        if (round == null) {
-            throw new ValidationException("This heat or final no longer exists.");
-        }
-        return round;
+        return events.getRound(id);
     }
 
     @Override
     public String saveRound(User actorArg, EventRound round) {
-        User actor = actorIn(actorArg,
-                round.id == null ? sportOfCategory(round.categoryId) : sportOfRound(round.id));
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor,
-                "create or edit heats and finals");
-
-        // An existing event stays in its category, whatever the screen sent.
-        EventRound storedRound = round.id == null ? null : getRound(round.id);
-        if (storedRound != null) {
-            round.categoryId = storedRound.categoryId;
-        }
-        Category category = getCategory(round.categoryId);
-        if (category == null) {
-            throw new ValidationException("The category no longer exists.");
-        }
-        boolean timed = SportTemplate.ENGINE_TIMED.equals(category.engine);
-        if (!timed && !SportTemplate.ENGINE_MEASURED.equals(category.engine)) {
-            throw new ValidationException("Heats and finals are for races and throwing "
-                    + "events. This category uses fixtures between two sides.");
-        }
-        boolean heat = EventRound.STAGE_HEAT.equals(round.stage);
-        if (!heat && !EventRound.STAGE_FINAL.equals(round.stage)) {
-            throw new ValidationException("Choose Heat or Final.");
-        }
-        if (heat && !(timed && category.ruleSet().isYes("heats"))) {
-            throw new ValidationException("This category has no heats. Create its "
-                    + "competition as the Final.");
-        }
-        int heatNumber = heat ? round.heatNumber : 0;
-        if (heat && heatNumber < 1) {
-            throw new ValidationException("Give the heat a number, starting from 1.");
-        }
-        String date = clean(round.date);
-        String time = clean(round.time);
-        if (!DateUtil.isValidDate(date)) {
-            throw new ValidationException("Choose the date.");
-        }
-        if (!time.isEmpty() && !DateUtil.isValidTime(time)) {
-            throw new ValidationException("The time must look like 16:30.");
-        }
-        if (round.assignedTo != null) {
-            User assignee = getUser(round.assignedTo);
-            if (assignee == null || !AccessControl.isAsooCore(assignee)) {
-                throw new ValidationException("An event can only be assigned to an Asoo Core.");
-            }
-        }
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        boolean isNew = round.id == null;
-        String id = isNew ? newId() : round.id;
-        if (count(db, "event_rounds", "category_id = ? AND stage = ? AND heat_number = ? "
-                + "AND id <> ?", category.id, round.stage, String.valueOf(heatNumber), id) > 0) {
-            throw new ValidationException(heat ? "Heat " + heatNumber + " already exists."
-                    : "This category already has a final.");
-        }
-
-        ContentValues cv = new ContentValues();
-        cv.put("stage", round.stage);
-        cv.put("heat_number", heatNumber);
-        cv.put("event_date", date);
-        cv.put("event_time", time);
-        cv.put("venue", clean(round.venue));
-        if (round.assignedTo == null) {
-            cv.putNull("assigned_to");
-        } else {
-            cv.put("assigned_to", round.assignedTo);
-        }
-        cv.put("updated_at", System.currentTimeMillis());
-        cv.put("updated_by", actor.id);
-        if (isNew) {
-            cv.put("id", id);
-            cv.put("category_id", category.id);
-            cv.put("status", Match.STATUS_UPCOMING);
-            cv.put("is_final", 0);
-            cv.put("version", 1);
-            db.insertOrThrow("event_rounds", null, cv);
-            return id;
-        }
-        EventRound stored = requireRound(id);
-        if (stored.isFinal) {
-            throw new ValidationException("These results are official. Reopen them before "
-                    + "changing the event.");
-        }
-        cv.put("version", round.version + 1);
-        if (db.update("event_rounds", cv, "id = ? AND version = ?",
-                new String[]{id, String.valueOf(round.version)}) == 0) {
-            throw new ConflictException("Someone else changed this event while you were "
-                    + "editing it. Open it again and retry.");
-        }
-        return id;
+        return events.saveRound(actorArg, round);
     }
 
     @Override
     public void deleteRound(User actorArg, String id) {
-        User actor = actorIn(actorArg, sportOfRound(id));
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor,
-                "delete heats and finals");
-        // Entrants, attempts and history of the event are removed with it.
-        helper.getWritableDatabase().delete("event_rounds", "id = ?", new String[]{id});
+        events.deleteRound(actorArg, id);
     }
-
-    // ----- Entrants -----
 
     @Override
     public List<EventEntry> getEntries(String roundId) {
-        List<EventEntry> list = new ArrayList<>();
-        // Placed entrants first in order of position, then the rest by lane.
-        Cursor c = query("SELECT e.*, r.name AS reg_name, r.year, r.logo_path, r.members, "
-                + "r.branch_id AS reg_branch_id, "
-                + "b.name AS branch_name, b.code AS branch_code "
-                + "FROM event_entries e "
-                + "JOIN registrations r ON r.id = e.registration_id "
-                + "LEFT JOIN branches b ON b.id = r.branch_id "
-                + "WHERE e.round_id = ? "
-                + "ORDER BY e.position IS NULL, e.position, e.lane", roundId);
-        try {
-            while (c.moveToNext()) {
-                EventEntry e = new EventEntry();
-                e.id = text(c, "id");
-                e.roundId = text(c, "round_id");
-                e.registrationId = text(c, "registration_id");
-                e.lane = number(c, "lane");
-                e.timeMs = numberOrNull(c, "time_ms");
-                e.resultStatus = text(c, "result_status");
-                e.position = numberOrNull(c, "position");
-                e.qualified = number(c, "qualified") == 1;
-                e.bestCm = numberOrNull(c, "best_cm");
-                e.name = text(c, "reg_name");
-                e.year = number(c, "year");
-                e.logoPath = text(c, "logo_path");
-                e.team = !text(c, "members").isEmpty();
-                e.branchName = text(c, "branch_name");
-                e.branchCode = text(c, "branch_code");
-                e.branchId = textOrNull(c, "reg_branch_id");
-                list.add(e);
-            }
-        } finally {
-            c.close();
-        }
-        for (EventEntry e : list) {
-            Cursor a = query("SELECT * FROM event_attempts WHERE entry_id = ? ORDER BY number",
-                    e.id);
-            try {
-                while (a.moveToNext()) {
-                    EventEntry.Attempt attempt = new EventEntry.Attempt();
-                    attempt.number = number(a, "number");
-                    attempt.distanceCm = numberOrNull(a, "distance_cm");
-                    attempt.foul = number(a, "foul") == 1;
-                    e.attempts.add(attempt);
-                }
-            } finally {
-                a.close();
-            }
-        }
-        return list;
-    }
-
-    private static EventEntry findEntry(List<EventEntry> entries, String entryId) {
-        for (EventEntry e : entries) {
-            if (e.id.equals(entryId)) {
-                return e;
-            }
-        }
-        throw new ValidationException("This entrant is no longer in the event.");
-    }
-
-    /** The heat or final an entrant belongs to. */
-    private EventRound roundOfEntry(String entryId) {
-        String roundId = null;
-        Cursor c = query("SELECT round_id FROM event_entries WHERE id = ?", entryId);
-        try {
-            if (c.moveToFirst()) {
-                roundId = c.getString(0);
-            }
-        } finally {
-            c.close();
-        }
-        if (roundId == null) {
-            throw new ValidationException("This entrant is no longer in the event.");
-        }
-        return requireRound(roundId);
+        return events.getEntries(roundId);
     }
 
     @Override
     public String addEntry(User actorArg, String roundId, String registrationId, int lane) {
-        User actor = actorIn(actorArg, sportOfRound(roundId));
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor,
-                "add entrants to an event");
-        EventRound round = requireRound(roundId);
-        if (round.isFinal) {
-            throw new ValidationException("These results are official. Reopen them first.");
-        }
-        Registration entrant = rawRegistration(registrationId);
-        if (entrant == null || !round.categoryId.equals(entrant.categoryId)) {
-            throw new ValidationException("This entrant is not registered in this category.");
-        }
-        if (!entrant.isApproved()) {
-            throw new ValidationException(entrant.name + " is not approved yet.");
-        }
-        SQLiteDatabase db = helper.getWritableDatabase();
-        if (count(db, "event_entries", "round_id = ? AND registration_id = ?", roundId,
-                registrationId) > 0) {
-            throw new ValidationException(entrant.name + " is already in this event.");
-        }
-
-        List<EventEntry> entries = getEntries(roundId);
-        if (round.isMeasured()) {
-            // Throwing order: next free number unless one was given.
-            if (lane <= 0) {
-                lane = entries.size() + 1;
-            }
-        } else {
-            int lanes = Math.max(1, round.rules().getInt("lanes", 8));
-            if (entries.size() >= lanes) {
-                throw new ValidationException("This race is full: there are " + lanes
-                        + " lanes.");
-            }
-            if (lane < 1 || lane > lanes) {
-                throw new ValidationException("Choose a lane from 1 to " + lanes + ".");
-            }
-        }
-        for (EventEntry e : entries) {
-            if (e.lane == lane) {
-                throw new ValidationException((round.isMeasured() ? "Position " : "Lane ")
-                        + lane + " is already taken by " + e.name + ".");
-            }
-        }
-
-        String id = newId();
-        ContentValues cv = new ContentValues();
-        cv.put("id", id);
-        cv.put("round_id", roundId);
-        cv.put("registration_id", registrationId);
-        cv.put("lane", lane);
-        db.insertOrThrow("event_entries", null, cv);
-        return id;
+        return events.addEntry(actorArg, roundId, registrationId, lane);
     }
 
     @Override
     public void removeEntry(User actorArg, String entryId) {
-        User actor = actorIn(actorArg, sportOfEntry(entryId));
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor,
-                "remove entrants from an event");
-        EventRound round = roundOfEntry(entryId);
-        if (round.isFinal) {
-            throw new ValidationException("These results are official. Reopen them first.");
-        }
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            db.delete("event_entries", "id = ?", new String[]{entryId});
-            storeRanking(db, round);
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
-    }
-
-    // ----- Status and results -----
-
-    /** Common checks before a result is written, the same as for a match. */
-    private void requireRoundScoring(User actor, EventRound round) {
-        AccessControl.require(AccessControl.canScore(actor, round.assignedTo, round.isFinal),
-                actor, "enter results for this event");
-        if (round.isFinal) {
-            throw new ValidationException("These results are official. They have to be "
-                    + "reopened with a reason before they can change.");
-        }
-        if (!Match.STATUS_LIVE.equals(round.status)
-                && !Match.STATUS_COMPLETED.equals(round.status)) {
-            throw new ValidationException("Results can only be entered while the event is "
-                    + "Live. Its status is " + round.status + ": start or resume it first.");
-        }
+        events.removeEntry(actorArg, entryId);
     }
 
     @Override
-    public void setRoundStatus(User actorArg, String roundId, int expectedVersion,
-                               String status) {
-        User actor = actorIn(actorArg, sportOfRound(roundId));
-        EventRound round = requireRound(roundId);
-        AccessControl.require(AccessControl.canScore(actor, round.assignedTo, round.isFinal),
-                actor, "change the status of this event");
-        if (round.isFinal) {
-            throw new ValidationException("These results are official, so the status cannot "
-                    + "change.");
-        }
-        if (!Match.isValidStatus(status)) {
-            throw new ValidationException("Choose a valid status.");
-        }
-        if (Match.STATUS_COMPLETED.equals(status)) {
-            // Every entrant needs a result or a reason for not having one.
-            int missing = 0;
-            List<EventEntry> entries = getEntries(roundId);
-            for (EventEntry e : entries) {
-                boolean hasResult = round.isMeasured() ? !e.attempts.isEmpty() : e.timeMs != null;
-                if (!hasResult && e.hasNormalStatus()) {
-                    missing++;
-                }
-            }
-            if (entries.isEmpty()) {
-                throw new ValidationException("This event has no entrants.");
-            }
-            if (missing > 0) {
-                throw new ValidationException(missing + " entrant(s) have no result yet. "
-                        + "Enter a result, or mark them as did not start, did not finish or "
-                        + "disqualified.");
-            }
-        }
-        ContentValues cv = new ContentValues();
-        cv.put("status", status);
-        writeRound(round, expectedVersion, cv, actor, ScoreAudit.ACTION_STATUS,
-                "Status: " + status, "");
+    public void setRoundStatus(User actorArg, String roundId, int expectedVersion, String status) {
+        events.setRoundStatus(actorArg, roundId, expectedVersion, status);
     }
 
     @Override
     public void saveTimedResult(User actorArg, String entryId, int expectedVersion,
-                                Integer timeMs, String resultStatus) {
-        User actor = actorIn(actorArg, sportOfEntry(entryId));
-        EventRound round = roundOfEntry(entryId);
-        requireRoundScoring(actor, round);
-        if (round.isMeasured()) {
-            throw new ValidationException("This event is measured, not timed.");
-        }
-        String status = checkResultStatus(resultStatus);
-        if (timeMs != null && timeMs <= 0) {
-            throw new ValidationException("Enter the time, for example 12.34 or 1:02.35.");
-        }
-        // Someone who did not start or finish has no time.
-        if (EventEntry.STATUS_DNS.equals(status) || EventEntry.STATUS_DNF.equals(status)) {
-            timeMs = null;
-        }
-        EventEntry entry = findEntry(getEntries(round.id), entryId);
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            ContentValues cv = new ContentValues();
-            if (timeMs == null) {
-                cv.putNull("time_ms");
-            } else {
-                cv.put("time_ms", timeMs);
-            }
-            cv.put("result_status", status);
-            db.update("event_entries", cv, "id = ?", new String[]{entryId});
-            storeRanking(db, round);
-            writeRound(round, expectedVersion, new ContentValues(), actor,
-                    ScoreAudit.ACTION_SCORE_UPDATE,
-                    "Lane " + entry.lane + " " + entry.name + ": "
-                            + (timeMs == null ? "no time" : Measure.formatTime(timeMs))
-                            + (status.isEmpty() ? "" : " " + status), "");
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
+            Integer timeMs, String resultStatus) {
+        events.saveTimedResult(actorArg, entryId, expectedVersion, timeMs, resultStatus);
     }
 
     @Override
     public void saveAttempt(User actorArg, String entryId, int expectedVersion, int number,
-                            Integer distanceCm, boolean foul) {
-        User actor = actorIn(actorArg, sportOfEntry(entryId));
-        EventRound round = roundOfEntry(entryId);
-        requireRoundScoring(actor, round);
-        if (!round.isMeasured()) {
-            throw new ValidationException("This event is timed, not measured.");
-        }
-        RuleSet rules = round.rules();
-        int attempts = Math.max(1, rules.getInt("attempts", 3));
-        int finalistCount = Math.max(0, rules.getInt("finalists", 0));
-        int extra = finalistCount > 0 ? Math.max(0, rules.getInt("extra_attempts", 0)) : 0;
-        boolean secondBest = rules.get("tie_break", "").startsWith("Second-best");
-
-        List<EventEntry> entries = getEntries(round.id);
-        EventEntry entry = findEntry(entries, entryId);
-        if (number < 1 || number > attempts + extra) {
-            throw new ValidationException("This event allows attempts 1 to "
-                    + (attempts + extra) + ".");
-        }
-        // Attempts are taken in order; an existing one may be corrected.
-        int taken = entry.attempts.size();
-        if (number > taken + 1) {
-            throw new ValidationException("Enter attempt " + (taken + 1) + " first.");
-        }
-        if (number > attempts
-                && !EventRanking.finalists(entries, attempts, finalistCount, secondBest)
-                .contains(entry)) {
-            throw new ValidationException("Only the best " + finalistCount + " after "
-                    + attempts + " attempts take the extra attempts.");
-        }
-        if (foul) {
-            distanceCm = null;
-        } else if (distanceCm == null || distanceCm <= 0) {
-            throw new ValidationException("Enter the measured distance, for example 12.45, "
-                    + "or mark the attempt as a foul.");
-        }
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            ContentValues cv = new ContentValues();
-            if (distanceCm == null) {
-                cv.putNull("distance_cm");
-            } else {
-                cv.put("distance_cm", distanceCm);
-            }
-            cv.put("foul", foul ? 1 : 0);
-            if (db.update("event_attempts", cv, "entry_id = ? AND number = ?",
-                    new String[]{entryId, String.valueOf(number)}) == 0) {
-                cv.put("id", newId());
-                cv.put("entry_id", entryId);
-                cv.put("number", number);
-                db.insertOrThrow("event_attempts", null, cv);
-            }
-            storeRanking(db, round);
-            writeRound(round, expectedVersion, new ContentValues(), actor,
-                    ScoreAudit.ACTION_SCORE_UPDATE,
-                    entry.name + ", attempt " + number + ": "
-                            + (foul ? "foul" : Measure.formatDistance(distanceCm) + " m"), "");
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
+            Integer distanceCm, boolean foul) {
+        events.saveAttempt(actorArg, entryId, expectedVersion, number, distanceCm, foul);
     }
 
     @Override
     public void setEntryStatus(User actorArg, String entryId, int expectedVersion,
-                               String resultStatus) {
-        User actor = actorIn(actorArg, sportOfEntry(entryId));
-        EventRound round = roundOfEntry(entryId);
-        requireRoundScoring(actor, round);
-        String status = checkResultStatus(resultStatus);
-        EventEntry entry = findEntry(getEntries(round.id), entryId);
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            ContentValues cv = new ContentValues();
-            cv.put("result_status", status);
-            db.update("event_entries", cv, "id = ?", new String[]{entryId});
-            storeRanking(db, round);
-            writeRound(round, expectedVersion, new ContentValues(), actor,
-                    ScoreAudit.ACTION_SCORE_UPDATE,
-                    entry.name + ": " + (status.isEmpty() ? "result counts" : status), "");
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
-    }
-
-    private static String checkResultStatus(String status) {
-        String value = status == null ? "" : status.trim();
-        for (String known : EventEntry.STATUSES) {
-            if (known.equals(value)) {
-                return value;
-            }
-        }
-        throw new ValidationException("Choose a valid result status.");
-    }
-
-    /**
-     * Works out positions (and qualifiers, for a heat) from the stored results and saves
-     * them on every entrant. Called inside the transaction of each result change, so the
-     * positions always agree with the results.
-     */
-    private void storeRanking(SQLiteDatabase db, EventRound round) {
-        List<EventEntry> entries = getEntries(round.id);
-        RuleSet rules = round.rules();
-        if (round.isMeasured()) {
-            EventRanking.rankMeasured(entries,
-                    rules.get("tie_break", "").startsWith("Second-best"));
-        } else {
-            boolean heatsUsed = round.isHeat() && rules.isYes("heats");
-            EventRanking.rankTimed(entries,
-                    heatsUsed ? Math.max(0, rules.getInt("qualify_per_heat", 0)) : 0);
-        }
-        for (EventEntry e : entries) {
-            ContentValues cv = new ContentValues();
-            if (e.position == null) {
-                cv.putNull("position");
-            } else {
-                cv.put("position", e.position);
-            }
-            cv.put("qualified", e.qualified ? 1 : 0);
-            if (e.bestCm == null) {
-                cv.putNull("best_cm");
-            } else {
-                cv.put("best_cm", e.bestCm);
-            }
-            db.update("event_entries", cv, "id = ?", new String[]{e.id});
-        }
-    }
-
-    /** Saves a change to a heat or final and records it in its history, like writeMatch. */
-    private void writeRound(EventRound before, int expectedVersion, ContentValues cv, User actor,
-                            String action, String detail, String reason) {
-        long now = System.currentTimeMillis();
-        cv.put("version", expectedVersion + 1);
-        cv.put("updated_at", now);
-        cv.put("updated_by", actor.id);
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            if (db.update("event_rounds", cv, "id = ? AND version = ?",
-                    new String[]{before.id, String.valueOf(expectedVersion)}) == 0) {
-                throw new ConflictException("Someone else updated this event a moment ago. "
-                        + "Your change was not saved. Check the latest results and try again.");
-            }
-            ContentValues audit = new ContentValues();
-            audit.put("id", newId());
-            audit.put("round_id", before.id);
-            audit.put("changed_by", actor.id);
-            audit.put("changed_at", now);
-            audit.put("action", action);
-            audit.put("detail", detail);
-            audit.put("reason", reason);
-            db.insertOrThrow("event_audit", null, audit);
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
+            String resultStatus) {
+        events.setEntryStatus(actorArg, entryId, expectedVersion, resultStatus);
     }
 
     @Override
     public void finaliseRound(User actorArg, String roundId, int expectedVersion) {
-        User actor = actorIn(actorArg, sportOfRound(roundId));
-        AccessControl.require(AccessControl.canFinaliseResults(actor,
-                getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "make results official");
-        EventRound round = requireRound(roundId);
-        if (round.isFinal) {
-            throw new ValidationException("These results are already official.");
-        }
-        if (!Match.STATUS_COMPLETED.equals(round.status)) {
-            throw new ValidationException("Only a completed event can be made official.");
-        }
-        ContentValues cv = new ContentValues();
-        cv.put("is_final", 1);
-        writeRound(round, expectedVersion, cv, actor, ScoreAudit.ACTION_FINALISED,
-                "Results made official", "");
+        events.finaliseRound(actorArg, roundId, expectedVersion);
     }
 
     @Override
     public void reopenRound(User actorArg, String roundId, int expectedVersion, String reason) {
-        User actor = actorIn(actorArg, sportOfRound(roundId));
-        AccessControl.require(AccessControl.canFinaliseResults(actor,
-                getFlag(AppSettings.CORE_CAN_FINALISE)), actor, "reopen official results");
-        EventRound round = requireRound(roundId);
-        if (!round.isFinal) {
-            throw new ValidationException("These results are not official, so they do not "
-                    + "need reopening.");
-        }
-        if (clean(reason).isEmpty()) {
-            throw new ValidationException("Give a reason for reopening official results.");
-        }
-        ContentValues cv = new ContentValues();
-        cv.put("is_final", 0);
-        writeRound(round, expectedVersion, cv, actor, ScoreAudit.ACTION_REOPENED,
-                "Results reopened", clean(reason));
+        events.reopenRound(actorArg, roundId, expectedVersion, reason);
     }
 
     @Override
     public List<ScoreAudit> getRoundAudit(User actorArg, String roundId) {
-        User actor = actorIn(actorArg, sportOfRound(roundId));
-        AccessControl.require(AccessControl.canViewScoreHistory(actor), actor,
-                "view the result history");
-        List<ScoreAudit> list = new ArrayList<>();
-        Cursor c = query("SELECT a.*, u.name AS changed_by_name FROM event_audit a "
-                + "LEFT JOIN users u ON u.id = a.changed_by "
-                + "WHERE a.round_id = ? ORDER BY a.changed_at DESC, a.rowid DESC", roundId);
-        try {
-            while (c.moveToNext()) {
-                ScoreAudit a = new ScoreAudit();
-                a.id = text(c, "id");
-                a.matchId = text(c, "round_id");
-                a.changedByName = text(c, "changed_by_name");
-                a.changedAt = c.getLong(c.getColumnIndexOrThrow("changed_at"));
-                a.action = text(c, "action");
-                a.oldScore = "";
-                a.newScore = text(c, "detail");
-                a.reason = text(c, "reason");
-                list.add(a);
-            }
-        } finally {
-            c.close();
-        }
-        return list;
+        return events.getRoundAudit(actorArg, roundId);
     }
 
-    /**
-     * Builds the final of a race from its heats: everyone who qualified by position,
-     * plus the fastest of the rest as far as the rules allow. All heats must be official.
-     */
     @Override
     public String createFinalFromHeats(User actorArg, String categoryId) {
-        User actor = actorIn(actorArg, sportOfCategory(categoryId));
-        AccessControl.require(AccessControl.canManageFixtures(actor), actor,
-                "create the final");
-        Category category = getCategory(categoryId);
-        if (category == null || !SportTemplate.ENGINE_TIMED.equals(category.engine)
-                || !category.ruleSet().isYes("heats")) {
-            throw new ValidationException("Only a race that is run in heats has a final "
-                    + "made from them.");
-        }
-        List<EventRound> heats = new ArrayList<>();
-        for (EventRound r : getRounds(categoryId)) {
-            if (!r.isHeat()) {
-                throw new ValidationException("This category already has a final.");
-            }
-            if (!r.isFinal) {
-                throw new ValidationException(r.title() + " is not official yet. Every heat "
-                        + "has to be made official before the final is drawn.");
-            }
-            heats.add(r);
-        }
-        if (heats.isEmpty()) {
-            throw new ValidationException("There are no heats yet.");
-        }
-
-        List<EventEntry> all = new ArrayList<>();
-        for (EventRound heat : heats) {
-            all.addAll(getEntries(heat.id));
-        }
-        List<EventEntry> finalists = new ArrayList<>();
-        for (EventEntry e : all) {
-            if (e.qualified) {
-                finalists.add(e);
-            }
-        }
-        RuleSet rules = category.ruleSet();
-        finalists.addAll(EventRanking.fastestNonQualifiers(all,
-                Math.max(0, rules.getInt("fastest_losers", 0))));
-        int lanes = Math.max(1, rules.getInt("lanes", 8));
-        if (finalists.isEmpty()) {
-            throw new ValidationException("Nobody qualified from the heats.");
-        }
-        if (finalists.size() > lanes) {
-            throw new ValidationException(finalists.size() + " entrants qualified but there "
-                    + "are only " + lanes + " lanes. Change the qualifying rules.");
-        }
-        // Lanes in order of heat time, fastest in lane 1.
-        java.util.Collections.sort(finalists, new java.util.Comparator<EventEntry>() {
-            @Override
-            public int compare(EventEntry x, EventEntry y) {
-                return x.timeMs - y.timeMs;
-            }
-        });
-
-        EventRound finalRound = new EventRound();
-        finalRound.categoryId = categoryId;
-        finalRound.stage = EventRound.STAGE_FINAL;
-        finalRound.date = DateUtil.today().compareTo(heats.get(0).date) > 0
-                ? DateUtil.today() : heats.get(0).date;
-        finalRound.time = "";
-        finalRound.venue = heats.get(0).venue;
-        finalRound.assignedTo = heats.get(0).assignedTo;
-
-        SQLiteDatabase db = helper.getWritableDatabase();
-        db.beginTransaction();
-        try {
-            String id = saveRound(actor, finalRound);
-            int lane = 1;
-            for (EventEntry e : finalists) {
-                ContentValues cv = new ContentValues();
-                cv.put("id", newId());
-                cv.put("round_id", id);
-                cv.put("registration_id", e.registrationId);
-                cv.put("lane", lane++);
-                db.insertOrThrow("event_entries", null, cv);
-            }
-            db.setTransactionSuccessful();
-            return id;
-        } finally {
-            db.endTransaction();
-        }
+        return events.createFinalFromHeats(actorArg, categoryId);
     }
 
     // =====================================================================
@@ -3408,14 +1766,14 @@ public class SqliteArenaRepository implements ArenaRepository {
      * never trusted for its role: only its id and session are used to look the real
      * record up.
      */
-    private User trusted(User actor) {
+    User trusted(User actor) {
         if (actor == null || actor.id == null) {
             return null;
         }
         // The session must still be live and must belong to this user. A session that
         // was signed out, taken over or left unused too long gives no identity at all,
         // so the person is treated as a member of the public.
-        if (!actor.id.equals(userOfLiveSession(actor.sessionId))) {
+        if (!actor.id.equals(sessions.userOfLiveSession(actor.sessionId))) {
             return null;
         }
         User user = getUser(actor.id);
@@ -3425,53 +1783,8 @@ public class SqliteArenaRepository implements ArenaRepository {
         return user;
     }
 
-    private static String newId() {
-        return UUID.randomUUID().toString();
-    }
-
-    private static String clean(String value) {
-        return value == null ? "" : value.trim();
-    }
-
     private Cursor query(String sql, String... args) {
         return helper.getReadableDatabase().rawQuery(sql, args);
-    }
-
-    private static int count(SQLiteDatabase db, String table, String where, String... args) {
-        return (int) DatabaseUtils.queryNumEntries(db, table, where, args);
-    }
-
-    /** Text column, with NULL returned as an empty string. */
-    private static String text(Cursor c, String column) {
-        int index = c.getColumnIndexOrThrow(column);
-        return c.isNull(index) ? "" : c.getString(index);
-    }
-
-    /** Text column that may really be NULL (used for optional ids). */
-    private static String textOrNull(Cursor c, String column) {
-        int index = c.getColumnIndexOrThrow(column);
-        return c.isNull(index) ? null : c.getString(index);
-    }
-
-    private static int number(Cursor c, String column) {
-        return c.getInt(c.getColumnIndexOrThrow(column));
-    }
-
-    private static Integer numberOrNull(Cursor c, String column) {
-        int index = c.getColumnIndexOrThrow(column);
-        return c.isNull(index) ? null : c.getInt(index);
-    }
-
-    private static User readUser(Cursor c) {
-        User u = new User();
-        u.id = text(c, "id");
-        u.name = text(c, "name");
-        u.email = text(c, "email");
-        u.role = text(c, "role");
-        u.active = number(c, "active") == 1;
-        u.branchId = textOrNull(c, "branch_id");
-        u.branchName = text(c, "branch_name");
-        return u;
     }
 
     private List<User> readUsers(Cursor c) {
@@ -3486,98 +1799,4 @@ public class SqliteArenaRepository implements ArenaRepository {
         return list;
     }
 
-    private static Sport readSport(Cursor c) {
-        Sport s = new Sport();
-        s.id = text(c, "id");
-        s.name = text(c, "name");
-        s.description = text(c, "description");
-        s.templateKey = text(c, "template_key");
-        return s;
-    }
-
-    private static Category readCategory(Cursor c) {
-        Category k = new Category();
-        k.id = text(c, "id");
-        k.sportId = text(c, "sport_id");
-        k.name = text(c, "name");
-        k.type = text(c, "type");
-        k.minSize = number(c, "min_size");
-        k.maxSize = number(c, "max_size");
-        k.deadline = text(c, "deadline");
-        k.format = text(c, "format");
-        k.ptsWin = number(c, "pts_win");
-        k.ptsDraw = number(c, "pts_draw");
-        k.ptsLoss = number(c, "pts_loss");
-        k.engine = text(c, "engine");
-        k.rules = text(c, "rules");
-        return k;
-    }
-
-    /** Reads a row of REG_SELECT. What the caller may see is decided by forViewer. */
-    private static Registration readRegistration(Cursor c) {
-        Registration r = new Registration();
-        r.id = text(c, "id");
-        r.categoryId = text(c, "category_id");
-        r.name = text(c, "name");
-        r.branchId = textOrNull(c, "branch_id");
-        r.branchName = text(c, "branch_name");
-        r.branchCode = text(c, "branch_code");
-        r.year = number(c, "year");
-        r.teamLabel = text(c, "team_label");
-        r.logoPath = text(c, "logo_path");
-        r.contactName = text(c, "contact_name");
-        r.contactPhone = text(c, "contact_phone");
-        r.members = text(c, "members");
-        r.status = text(c, "status");
-        r.createdAt = c.getLong(c.getColumnIndexOrThrow("created_at"));
-        r.categoryName = text(c, "category_name");
-        r.sportName = text(c, "sport_name");
-        r.sportId = text(c, "sport_id");
-        return r;
-    }
-
-    private static Match readMatch(Cursor c) {
-        Match m = new Match();
-        m.id = text(c, "id");
-        m.categoryId = text(c, "category_id");
-        m.teamAId = text(c, "team_a_id");
-        m.teamBId = text(c, "team_b_id");
-        m.date = text(c, "match_date");
-        m.time = text(c, "match_time");
-        m.venue = text(c, "venue");
-        m.round = text(c, "round");
-        m.status = text(c, "status");
-        m.scoreA = numberOrNull(c, "score_a");
-        m.scoreB = numberOrNull(c, "score_b");
-        m.scoreNote = text(c, "score_note");
-        m.isFinal = number(c, "is_final") == 1;
-        m.assignedTo = textOrNull(c, "assigned_to");
-        m.updatedAt = c.getLong(c.getColumnIndexOrThrow("updated_at"));
-        m.updatedBy = textOrNull(c, "updated_by");
-        m.version = number(c, "version");
-        m.teamAName = text(c, "team_a_name");
-        m.teamBName = text(c, "team_b_name");
-        m.categoryName = text(c, "category_name");
-        m.categoryFormat = text(c, "category_format");
-        m.sportName = text(c, "sport_name");
-        m.sportId = text(c, "sport_id");
-        m.assignedName = text(c, "assigned_name");
-        m.updatedByName = text(c, "updated_by_name");
-        m.categoryType = text(c, "category_type");
-        m.categoryEngine = text(c, "category_engine");
-        m.categoryRules = text(c, "category_rules");
-        m.externalUrl = text(c, "external_url");
-        m.currentPeriod = number(c, "current_period");
-        m.penA = numberOrNull(c, "pen_a");
-        m.penB = numberOrNull(c, "pen_b");
-        m.branchAName = text(c, "branch_a_name");
-        m.branchACode = text(c, "branch_a_code");
-        m.yearA = number(c, "year_a");
-        m.logoA = text(c, "logo_a");
-        m.branchBName = text(c, "branch_b_name");
-        m.branchBCode = text(c, "branch_b_code");
-        m.yearB = number(c, "year_b");
-        m.logoB = text(c, "logo_b");
-        return m;
-    }
 }

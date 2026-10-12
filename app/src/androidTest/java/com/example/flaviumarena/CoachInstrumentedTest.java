@@ -25,7 +25,6 @@ import com.example.flaviumarena.model.Category;
 import com.example.flaviumarena.model.Match;
 import com.example.flaviumarena.model.Registration;
 import com.example.flaviumarena.model.Role;
-import com.example.flaviumarena.model.RuleSet;
 import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.model.User;
