@@ -17,4 +17,10 @@ public class ScoreAudit {
     public String oldScore;
     public String newScore;
     public String reason;
+
+    /**
+     * True for the history of a heat or final, where newScore is a whole sentence
+     * ("Lane 2 Asha Rao: 12.34") instead of a score that replaced oldScore.
+     */
+    public boolean detailOnly;
 }

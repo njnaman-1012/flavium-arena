@@ -32,12 +32,13 @@ app/src/main/java/com/example/flaviumarena/
   model/      Plain data classes: User, Category, Match, Registration, MedalRow ...
   auth/       AccessControl (every permission rule) and Session (who is logged in here)
   scoring/    The rules of the games, in pure Java: sets, tennis games, race and throw
-              ranking, standings, medals. No Android, no database.
+              ranking, standings, medals, and the wording of a match or event's state
+              (MatchSummary, EventSummary). No Android, no database.
   data/       Everything that touches the database (see below)
   export/     CSV and PDF downloads
   util/       Passwords, dates, team logos
   ui/
-    common/         BaseActivity, BaseFragment, RowAdapter, Ui helpers
+    common/         BaseActivity, BaseFragment, RowAdapter, FormDialog, Ui helpers
     main/           Home, Discover, Matches and More tabs, onboarding
     auth/           Login and first-Faculty set-up
     admin/          Accounts, settings, reports, permission self-test
@@ -60,7 +61,8 @@ app/src/androidTest/  Tests that need Android and a real SQLite database
 ```
 ui  -->  ArenaRepository (interface)  -->  SqliteArenaRepository  -->  SQLite
  |              ^                              |
- |              |                              +-- MatchStore, EventStore, SessionStore
+ |              |                              +-- AccountStore, CategoryStore, RegistrationStore,
+ |              |                              |   MatchStore, EventStore, SessionStore
  +--> AccessControl, scoring, export           +-- DbHelper (schema and migrations)
 ```
 
@@ -71,13 +73,20 @@ ui  -->  ArenaRepository (interface)  -->  SqliteArenaRepository  -->  SQLite
   they can be unit tested on the computer.
 - Screens use `AccessControl` only to decide which buttons to show. The repository
   checks every permission again before it changes anything.
+- A screen runs a change through `BaseActivity.attempt()`, which shows a refusal or a
+  database error as a message. Work that can take a moment goes through
+  `BaseActivity.runBusy()`: it runs in the background, shows a "please wait" message
+  and reports errors the same way. Downloads use it today; online calls will too.
 
 ### The data layer
 
 | Class | Responsibility |
 |---|---|
 | `ArenaRepository` | The interface every screen uses |
-| `SqliteArenaRepository` | The single entry point: accounts, branches, sports, categories, registrations, standings, medals. Hands fixtures and events on to the stores |
+| `SqliteArenaRepository` | The single entry point. Keeps branches, settings, sports, standings and medals, and hands everything else on to the stores below |
+| `AccountStore` | Logging in, passwords and lockout, accounts, a Coach's sports |
+| `CategoryStore` | Categories and their rules |
+| `RegistrationStore` | Registrations: who may see what, category limits, approval |
 | `MatchStore` | Fixtures, live scoring, finalising, score history |
 | `EventStore` | Heats and finals, entrants, times, attempts, positions |
 | `SessionStore` | Opening, checking and ending login sessions |
@@ -201,7 +210,7 @@ against a temporary database and lists each check.
 | Role rules | `AccessControlTest`, `PermissionRulesInstrumentedTest`, `CoachInstrumentedTest` |
 | Login and sessions | `LoginInstrumentedTest`, `SessionInstrumentedTest`, `PasswordUtilTest` |
 | Registrations | `BranchRulesTest`, `RegistrationRulesInstrumentedTest` |
-| Scoring | `SetScoringTest`, `EventRankingTest`, `ScoringInstrumentedTest`, `RoundsInstrumentedTest` |
+| Scoring | `SetScoringTest`, `EventRankingTest`, `MatchSummaryTest`, `EventSummaryTest`, `ScoringInstrumentedTest`, `RoundsInstrumentedTest` |
 | Standings and medals | `StandingsCalculatorTest`, `MedalsTest`, `MedalsInstrumentedTest` |
 | Sport catalogue | `RulesTest`, `SportCatalogueInstrumentedTest`, `LiveLinkTest` |
 | Downloads | `CsvTest`, `ExportInstrumentedTest` |

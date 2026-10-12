@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A small form with up to six numbers and a list. Rows that are not needed are hidden.
-     Used for correcting a set, entering an innings and recording an event. -->
+<!-- The form behind FormDialog: two lists, five numbers, one text box and a tick box.
+     Every part starts hidden; FormDialog shows the parts a screen asks for. -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
@@ -96,6 +96,13 @@
             android:id="@+id/etDialogText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="textCapWords" />
+            android:inputType="textCapWords"
+            android:maxLines="1" />
+
+        <CheckBox
+            android:id="@+id/cbDialogTick"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" />
     </LinearLayout>
 </ScrollView>

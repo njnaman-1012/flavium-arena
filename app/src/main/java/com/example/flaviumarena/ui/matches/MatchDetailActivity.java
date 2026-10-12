@@ -12,8 +12,9 @@ import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
-import androidx.appcompat.app.AlertDialog;
-
+import com.example.flaviumarena.ui.common.FormDialog;
+import com.example.flaviumarena.ui.common.Ui;
+import com.example.flaviumarena.scoring.MatchSummary;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.auth.AccessControl;
@@ -24,7 +25,6 @@ import com.example.flaviumarena.model.MatchEvent;
 import com.example.flaviumarena.model.MatchPeriod;
 import com.example.flaviumarena.model.Registration;
 import com.example.flaviumarena.model.RuleSet;
-import com.example.flaviumarena.model.ScoreAudit;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.scoring.LiveLink;
 import com.example.flaviumarena.scoring.SetRules;
@@ -49,6 +49,10 @@ import java.util.List;
  *
  * The controls appear only for someone who may score this match, and the repository
  * checks every change again.
+ *
+ * This class decides what is shown and what a tap does. The wording of a match's state
+ * is in scoring.MatchSummary, the rules of sets are in scoring.SetScoring, and the
+ * pop-up forms are ui.common.FormDialog.
  */
 public class MatchDetailActivity extends BaseActivity {
 
@@ -190,19 +194,14 @@ public class MatchDetailActivity extends BaseActivity {
             return setRules.unit + "s won (best of " + setRules.bestOf + ")";
         }
         if (uses(SportTemplate.ENGINE_CRICKET)) {
-            return cricketSummary();
+            return MatchSummary.cricket(match, periods, rules);
         }
         if (uses(SportTemplate.ENGINE_RESULT)) {
-            if (!match.hasScore()) {
-                return "No result yet";
-            }
-            int winner = match.winnerSide();
-            return winner == 0 ? "Draw" : (winner == 1 ? match.sideAShort() : match.sideBShort())
-                    + " won";
+            return MatchSummary.result(match);
         }
         StringBuilder caption = new StringBuilder();
         if (match.isUnderway() && match.currentPeriod > 0) {
-            caption.append(periodName(match.currentPeriod));
+            caption.append(MatchSummary.periodName(rules, match.currentPeriod));
         }
         if (match.penA != null && match.penB != null) {
             caption.append(caption.length() > 0 ? "\n" : "").append("Penalty shoot-out: ")
@@ -212,43 +211,6 @@ public class MatchDetailActivity extends BaseActivity {
             caption.append(caption.length() > 0 ? "\n" : "").append(match.scoreNote);
         }
         return caption.toString();
-    }
-
-    private String periodName(int number) {
-        int count = rules.getInt("periods", 0);
-        if (count > 0 && number == count + 1) {
-            return "Extra time";
-        }
-        if (count > 0 && number == count + 2) {
-            return "Shoot-out";
-        }
-        return rules.get("period_name", "Period") + " " + number
-                + (count > 0 ? " of " + count : "");
-    }
-
-    /** Cricket result in words, worked out from the innings totals. */
-    private String cricketSummary() {
-        if (periods.isEmpty()) {
-            return "Runs. No innings entered yet";
-        }
-        MatchPeriod first = periods.get(0);
-        if (periods.size() == 1) {
-            return "Runs. Target for the side batting second: " + (first.scoreA + 1);
-        }
-        MatchPeriod second = periods.get(1);
-        if (!Match.STATUS_COMPLETED.equals(match.status)) {
-            return "Runs. Chasing " + (first.scoreA + 1);
-        }
-        String battedFirst = "A".equals(first.side) ? match.sideAShort() : match.sideBShort();
-        String battedSecond = "A".equals(second.side) ? match.sideAShort() : match.sideBShort();
-        if (second.scoreA > first.scoreA) {
-            int wicketsLeft = Math.max(1, rules.getInt(RuleSet.TEAM_MIN, 11) - 1) - second.wickets;
-            return battedSecond + " won by " + wicketsLeft + " wickets";
-        }
-        if (second.scoreA < first.scoreA) {
-            return battedFirst + " won by " + (first.scoreA - second.scoreA) + " runs";
-        }
-        return "Scores level";
     }
 
     /** The set-by-set or innings-by-innings rows. Sports with one score have none. */
@@ -448,7 +410,7 @@ public class MatchDetailActivity extends BaseActivity {
             String[] names = new String[count + 3];
             names[0] = "Not started";
             for (int i = 1; i <= count + 2; i++) {
-                names[i] = periodName(i);
+                names[i] = MatchSummary.periodName(rules, i);
             }
             setSpinnerItems(spPeriod, names);
             spPeriod.setSelection(Math.min(match.currentPeriod, count + 2));
@@ -524,12 +486,13 @@ public class MatchDetailActivity extends BaseActivity {
                 ? new String[]{match.sideAShort(), match.sideBShort(),
                 "Tie-break: " + match.sideAShort(), "Tie-break: " + match.sideBShort()}
                 : new String[]{match.sideAShort(), match.sideBShort()};
-        FormDialog dialog = new FormDialog("Correct a " + setRules.unit.toLowerCase());
+        FormDialog dialog = new FormDialog(this, "Correct a " + setRules.unit.toLowerCase());
         dialog.choice("Which " + setRules.unit.toLowerCase(), names, count - 1);
         dialog.numbers(labels, null);
-        dialog.show((choice, choice2, numbers, text) -> change(() ->
-                repo.saveSetScore(currentUser, matchId, match.version, choice + 1, numbers[0],
-                        numbers[1], tiebreak ? numbers[2] : 0, tiebreak ? numbers[3] : 0)));
+        dialog.show(v -> change(() ->
+                repo.saveSetScore(currentUser, matchId, match.version, v.choice + 1,
+                        v.numbers[0], v.numbers[1], tiebreak ? v.numbers[2] : 0,
+                        tiebreak ? v.numbers[3] : 0)));
     }
 
     // ----- One score each -----
@@ -551,14 +514,14 @@ public class MatchDetailActivity extends BaseActivity {
     }
 
     private void showEventDialog() {
-        FormDialog dialog = new FormDialog("Record a match event");
+        FormDialog dialog = new FormDialog(this, "Record a match event");
         dialog.choice("Side", new String[]{match.sideAShort(), match.sideBShort()}, 0);
         dialog.secondChoice("Kind of event", MatchEvent.TYPES);
         dialog.numbers(new String[]{"Minute of the match"}, null);
         dialog.text("Player (optional)");
-        dialog.show((choice, choice2, numbers, text) -> change(() ->
-                repo.addEvent(currentUser, matchId, numbers[0], choice == 0 ? "A" : "B",
-                        MatchEvent.TYPES[choice2], text)));
+        dialog.show(v -> change(() ->
+                repo.addEvent(currentUser, matchId, v.numbers[0], v.choice == 0 ? "A" : "B",
+                        MatchEvent.TYPES[v.secondChoice], v.text)));
     }
 
     // ----- Win, draw, loss -----
@@ -576,14 +539,14 @@ public class MatchDetailActivity extends BaseActivity {
         int side = existing != null ? ("A".equals(existing.side) ? 0 : 1) : (number == 1 ? 0 : 1);
         int[] values = existing == null ? null : new int[]{existing.scoreA, existing.wickets,
                 existing.balls / 6, existing.balls % 6, existing.extras};
-        FormDialog dialog = new FormDialog(number == 1 ? "First innings" : "Second innings");
+        FormDialog dialog = new FormDialog(this, number == 1 ? "First innings" : "Second innings");
         dialog.choice("Batting side", new String[]{match.sideAShort(), match.sideBShort()}, side);
         dialog.numbers(new String[]{"Runs", "Wickets lost", "Overs completed",
                 "Balls of the over in progress (0 to 5)", "Extras (included in the runs)"}, values);
-        dialog.show((choice, choice2, numbers, text) -> change(() ->
+        dialog.show(v -> change(() ->
                 repo.saveInnings(currentUser, matchId, match.version, number,
-                        choice == 0 ? "A" : "B", numbers[0], numbers[1], numbers[2], numbers[3],
-                        numbers[4])));
+                        v.choice == 0 ? "A" : "B", v.numbers[0], v.numbers[1], v.numbers[2],
+                        v.numbers[3], v.numbers[4])));
     }
 
     /** Opens the match page on CricHeroes in its app or in the browser. */
@@ -612,112 +575,7 @@ public class MatchDetailActivity extends BaseActivity {
         if (!history) {
             return;
         }
-        StringBuilder text = new StringBuilder();
-        for (ScoreAudit a : repo.getScoreAudit(currentUser, matchId)) {
-            text.append(DateUtil.formatTimestamp(a.changedAt)).append("  ")
-                    .append(a.changedByName).append("\n")
-                    .append(a.action).append(": ").append(a.oldScore)
-                    .append("  ->  ").append(a.newScore);
-            if (!a.reason.isEmpty()) {
-                text.append("\nReason: ").append(a.reason);
-            }
-            text.append("\n\n");
-        }
-        tvAudit.setText(text.length() == 0 ? "No changes recorded yet." : text.toString().trim());
+        tvAudit.setText(Ui.historyText(repo.getScoreAudit(currentUser, matchId)));
     }
 
-    private void setText(int viewId, String text) {
-        ((TextView) findViewById(viewId)).setText(text);
-    }
-
-    // =====================================================================
-    // A small pop-up form, built from dialog_two_numbers.xml
-    // =====================================================================
-
-    private interface FormResult {
-        void onSave(int choice, int secondChoice, int[] numbers, String text);
-    }
-
-    /** Shows up to two lists, five number boxes and one text box; unused rows are hidden. */
-    private class FormDialog {
-        private final String title;
-        private final View form;
-        private final EditText[] boxes;
-        private int numberCount;
-
-        FormDialog(String title) {
-            this.title = title;
-            form = getLayoutInflater().inflate(R.layout.dialog_two_numbers, null);
-            boxes = new EditText[]{form.findViewById(R.id.etNumber1),
-                    form.findViewById(R.id.etNumber2), form.findViewById(R.id.etNumber3),
-                    form.findViewById(R.id.etNumber4), form.findViewById(R.id.etNumber5)};
-            int[] hidden = {R.id.tvDialogChoiceLabel, R.id.spDialogChoice,
-                    R.id.tvDialogChoice2Label, R.id.spDialogChoice2, R.id.tvNumber1Label,
-                    R.id.etNumber1, R.id.tvNumber2Label, R.id.etNumber2, R.id.tvNumber3Label,
-                    R.id.etNumber3, R.id.tvNumber4Label, R.id.etNumber4, R.id.tvNumber5Label,
-                    R.id.etNumber5, R.id.tvDialogTextLabel, R.id.etDialogText};
-            for (int id : hidden) {
-                form.findViewById(id).setVisibility(View.GONE);
-            }
-        }
-
-        void choice(String label, String[] options, int selected) {
-            list(R.id.tvDialogChoiceLabel, R.id.spDialogChoice, label, options, selected);
-        }
-
-        void secondChoice(String label, String[] options) {
-            list(R.id.tvDialogChoice2Label, R.id.spDialogChoice2, label, options, 0);
-        }
-
-        private void list(int labelId, int spinnerId, String label, String[] options,
-                          int selected) {
-            TextView tv = form.findViewById(labelId);
-            Spinner spinner = form.findViewById(spinnerId);
-            tv.setText(label);
-            tv.setVisibility(View.VISIBLE);
-            spinner.setVisibility(View.VISIBLE);
-            setSpinnerItems(spinner, options);
-            spinner.setSelection(selected);
-        }
-
-        void numbers(String[] labels, int[] values) {
-            int[] labelIds = {R.id.tvNumber1Label, R.id.tvNumber2Label, R.id.tvNumber3Label,
-                    R.id.tvNumber4Label, R.id.tvNumber5Label};
-            numberCount = labels.length;
-            for (int i = 0; i < labels.length; i++) {
-                TextView tv = form.findViewById(labelIds[i]);
-                tv.setText(labels[i]);
-                tv.setVisibility(View.VISIBLE);
-                boxes[i].setVisibility(View.VISIBLE);
-                boxes[i].setText(values == null ? "" : String.valueOf(values[i]));
-            }
-        }
-
-        void text(String label) {
-            TextView tv = form.findViewById(R.id.tvDialogTextLabel);
-            tv.setText(label);
-            tv.setVisibility(View.VISIBLE);
-            form.findViewById(R.id.etDialogText).setVisibility(View.VISIBLE);
-        }
-
-        void show(FormResult result) {
-            new AlertDialog.Builder(MatchDetailActivity.this)
-                    .setTitle(title)
-                    .setView(form)
-                    .setPositiveButton("Save", (dialog, which) -> {
-                        int[] numbers = new int[5];
-                        for (int i = 0; i < numberCount; i++) {
-                            numbers[i] = numberOf(boxes[i], 0); // an empty box counts as 0
-                        }
-                        Spinner first = form.findViewById(R.id.spDialogChoice);
-                        Spinner second = form.findViewById(R.id.spDialogChoice2);
-                        EditText text = form.findViewById(R.id.etDialogText);
-                        result.onSave(Math.max(0, first.getSelectedItemPosition()),
-                                Math.max(0, second.getSelectedItemPosition()), numbers,
-                                textOf(text));
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
-        }
-    }
 }

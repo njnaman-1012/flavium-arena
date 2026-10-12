@@ -1,5 +1,6 @@
 package com.example.flaviumarena.export;
 
+import com.example.flaviumarena.scoring.EventSummary;
 import com.example.flaviumarena.auth.AccessControl;
 import com.example.flaviumarena.data.ArenaException;
 import com.example.flaviumarena.data.ArenaRepository;
@@ -17,7 +18,6 @@ import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.model.StandingRow;
 import com.example.flaviumarena.model.User;
-import com.example.flaviumarena.scoring.Measure;
 import com.example.flaviumarena.scoring.Medals;
 import com.example.flaviumarena.util.DateUtil;
 
@@ -90,7 +90,7 @@ public final class ExportService {
                 if (branchId.equals(e.branchId)) {
                     csv.row(round.sportName, round.categoryName, round.title(), round.date,
                             round.time, round.venue, e.name, "", round.statusLabel(),
-                            e.qualified ? "Qualified" : "", resultOf(round, e),
+                            e.qualified ? "Qualified" : "", EventSummary.result(round.isMeasured(), e),
                             e.position == null ? "" : e.position);
                 }
             }
@@ -163,7 +163,7 @@ public final class ExportService {
         for (EventRound round : repo.getRounds(null)) {
             for (EventEntry e : repo.getEntries(round.id)) {
                 if (branchId.equals(e.branchId)) {
-                    String result = resultOf(round, e);
+                    String result = EventSummary.result(round.isMeasured(), e);
                     pdf.line(round.date + " " + round.time + "  " + round.sportName + ", "
                             + round.categoryName + ", " + round.title() + ": " + e.name
                             + (e.position == null ? "" : "  position " + e.position)
@@ -360,7 +360,7 @@ public final class ExportService {
                 for (EventEntry e : repo.getEntries(round.id)) {
                     csv.row(round.title() + (round.isFinal ? "" : " (provisional)"),
                             e.position, e.name, e.branchName, yearText(e.year), e.lane,
-                            resultOf(round, e), e.resultStatus, e.qualified ? "Yes" : "");
+                            EventSummary.result(round.isMeasured(), e), e.resultStatus, e.qualified ? "Yes" : "");
                 }
             }
         } else if (category.isKnockout()) {
@@ -404,11 +404,11 @@ public final class ExportService {
         for (EventEntry e : repo.getEntries(roundId)) {
             StringBuilder attempts = new StringBuilder();
             for (EventEntry.Attempt a : e.attempts) {
-                attempts.append(attempts.length() > 0 ? "; " : "").append(a.foul
-                        || a.distanceCm == null ? "foul" : Measure.formatDistance(a.distanceCm));
+                attempts.append(attempts.length() > 0 ? "; " : "")
+                        .append(EventSummary.attempt(a));
             }
             csv.row(e.position, e.name, e.branchName, yearText(e.year), e.lane,
-                    resultOf(round, e), attempts, e.resultStatus, e.qualified ? "Yes" : "");
+                    EventSummary.result(round.isMeasured(), e), attempts, e.resultStatus, e.qualified ? "Yes" : "");
         }
         return ExportFile.csv(Csv.fileName(round.sportName, round.categoryName, round.title(),
                 round.isFinal ? "Results" : "Provisional Results"), csv);
@@ -457,13 +457,6 @@ public final class ExportService {
             cells.add(r.contactPhone);
         }
         csv.row(cells.toArray());
-    }
-
-    private static String resultOf(EventRound round, EventEntry e) {
-        if (round.isMeasured()) {
-            return e.bestCm == null ? "" : Measure.formatDistance(e.bestCm);
-        }
-        return e.timeMs == null ? "" : Measure.formatTime(e.timeMs);
     }
 
     private static String yearText(int year) {

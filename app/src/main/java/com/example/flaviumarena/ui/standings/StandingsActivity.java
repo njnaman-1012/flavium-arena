@@ -9,6 +9,7 @@ import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import com.example.flaviumarena.scoring.EventSummary;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.ui.common.RowAdapter;
@@ -24,7 +25,6 @@ import com.example.flaviumarena.model.Registration;
 import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.model.StandingRow;
-import com.example.flaviumarena.scoring.Measure;
 import com.example.flaviumarena.scoring.Medals;
 
 import java.util.ArrayList;
@@ -303,14 +303,7 @@ public class StandingsActivity extends BaseActivity {
         String roundId = finalRound.id;
         boolean measured = finalRound.isMeasured();
         for (EventEntry e : repo.getEntries(roundId)) {
-            String result;
-            if (!e.hasNormalStatus()) {
-                result = e.resultStatus;
-            } else if (measured) {
-                result = e.bestCm == null ? "" : Measure.formatDistance(e.bestCm) + " m";
-            } else {
-                result = e.timeMs == null ? "" : Measure.formatTime(e.timeMs);
-            }
+            String result = EventSummary.badge(measured, e);
             RowAdapter.Row row = new RowAdapter.Row(e.id, e.name,
                     e.team ? "" : Registration.branchLine(e.branchName, e.year), result);
             row.circleText = e.position == null ? "-" : String.valueOf(e.position);

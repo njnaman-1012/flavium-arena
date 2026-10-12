@@ -3,8 +3,6 @@ package com.example.flaviumarena.ui.events;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.InputType;
-import android.view.View;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
@@ -12,6 +10,8 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
 
+import com.example.flaviumarena.ui.common.FormDialog;
+import com.example.flaviumarena.scoring.EventSummary;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.ui.common.RowAdapter;
@@ -24,7 +24,6 @@ import com.example.flaviumarena.model.EventRound;
 import com.example.flaviumarena.model.Match;
 import com.example.flaviumarena.model.Registration;
 import com.example.flaviumarena.model.RuleSet;
-import com.example.flaviumarena.model.ScoreAudit;
 import com.example.flaviumarena.scoring.Measure;
 import com.example.flaviumarena.util.DateUtil;
 
@@ -42,6 +41,9 @@ import java.util.List;
  *
  * Positions and qualifiers are worked out by the repository after every change. The
  * controls appear only for someone who may use them, and the repository checks again.
+ *
+ * This class decides what is shown and what a tap does. The wording of results and
+ * rules is in scoring.EventSummary, and the pop-up forms are ui.common.FormDialog.
  */
 public class RoundDetailActivity extends BaseActivity {
 
@@ -183,28 +185,16 @@ public class RoundDetailActivity extends BaseActivity {
             return text.toString();
         }
         if (!e.attempts.isEmpty()) {
-            text.append(text.length() > 0 ? "\n" : "");
-            for (EventEntry.Attempt a : e.attempts) {
-                text.append(a.number > 1 ? "   " : "").append(a.number).append(": ")
-                        .append(a.foul || a.distanceCm == null ? "foul"
-                                : Measure.formatDistance(a.distanceCm));
-            }
+            text.append(text.length() > 0 ? "\n" : "").append(EventSummary.attemptList(e));
         }
         return text.toString();
     }
 
     /** Right-hand side of an entrant's card: the result that counts. */
     private String badgeOf(EventEntry e) {
-        if (!e.hasNormalStatus()) {
-            return e.resultStatus;
-        }
-        if (round.isMeasured()) {
-            return e.bestCm == null ? "" : Measure.formatDistance(e.bestCm) + " m";
-        }
-        if (e.timeMs == null) {
-            return "";
-        }
-        return Measure.formatTime(e.timeMs) + (e.qualified ? "\nQualified" : "");
+        String badge = EventSummary.badge(round.isMeasured(), e);
+        return e.qualified && e.hasNormalStatus() && !badge.isEmpty()
+                ? badge + "\nQualified" : badge;
     }
 
     private void showDetails() {
@@ -215,26 +205,7 @@ public class RoundDetailActivity extends BaseActivity {
         info.append("\nScorer: ")
                 .append(round.assignedName.isEmpty() ? "not assigned" : round.assignedName);
 
-        if (round.isMeasured()) {
-            int attempts = Math.max(1, rules.getInt("attempts", 3));
-            int finalists = Math.max(0, rules.getInt("finalists", 0));
-            int extra = Math.max(0, rules.getInt("extra_attempts", 0));
-            info.append("\nAttempts: ").append(attempts);
-            if (finalists > 0 && extra > 0) {
-                info.append(", then ").append(extra).append(" more for the best ")
-                        .append(finalists);
-            }
-        } else {
-            info.append("\nLanes: ").append(Math.max(1, rules.getInt("lanes", 8)));
-            if (round.isHeat()) {
-                info.append("\nQualifying: first ").append(rules.getInt("qualify_per_heat", 0))
-                        .append(" of each heat");
-                int fastest = rules.getInt("fastest_losers", 0);
-                if (fastest > 0) {
-                    info.append(", plus the ").append(fastest).append(" fastest of the rest");
-                }
-            }
-        }
+        info.append("\n").append(EventSummary.rules(round));
         info.append("\nLast updated: ").append(DateUtil.formatTimestamp(round.updatedAt));
         if (!round.updatedByName.isEmpty()) {
             info.append(" by ").append(round.updatedByName);
@@ -297,10 +268,11 @@ public class RoundDetailActivity extends BaseActivity {
     // ----- Races -----
 
     private void showTimeDialog(EventEntry e) {
-        EntryDialog dialog = new EntryDialog("Lane " + e.lane + ": " + e.name);
-        dialog.value("Time (12.34 or 1:02.35)",
+        FormDialog dialog = new FormDialog(this, "Lane " + e.lane + ": " + e.name);
+        dialog.text("Time (12.34 or 1:02.35)",
                 e.timeMs == null ? "" : Measure.formatTime(e.timeMs), InputType.TYPE_CLASS_TEXT);
-        dialog.show((choice, text, ticked) -> {
+        dialog.show(v -> {
+            String text = v.text;
             Integer time = null;
             if (!text.isEmpty()) {
                 int parsed = Measure.parseTimeMs(text);
@@ -322,23 +294,23 @@ public class RoundDetailActivity extends BaseActivity {
     // ----- Throws -----
 
     private void showAttemptDialog(EventEntry e) {
-        int attempts = Math.max(1, rules.getInt("attempts", 3));
-        int finalists = Math.max(0, rules.getInt("finalists", 0));
-        int allowed = attempts + (finalists > 0 ? Math.max(0, rules.getInt("extra_attempts", 0)) : 0);
+        int allowed = EventSummary.attemptsAllowed(rules);
         // Attempts already taken can be corrected; the next one can be entered.
         int count = Math.min(e.attempts.size() + 1, allowed);
         String[] names = new String[count];
         for (int i = 0; i < count; i++) {
             EventEntry.Attempt taken = e.attempt(i + 1);
-            names[i] = "Attempt " + (i + 1) + (taken == null ? ""
-                    : taken.foul ? " (foul)" : " (" + Measure.formatDistance(taken.distanceCm) + ")");
+            names[i] = "Attempt " + (i + 1)
+                    + (taken == null ? "" : " (" + EventSummary.attempt(taken) + ")");
         }
-        EntryDialog dialog = new EntryDialog(e.name);
+        FormDialog dialog = new FormDialog(this, e.name);
         dialog.choice("Which attempt", names, count - 1);
-        dialog.value("Distance in metres (12.45)", "",
+        dialog.text("Distance in metres (12.45)", "",
                 InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        dialog.tickBox();
-        dialog.show((choice, text, foul) -> {
+        dialog.tickBox("Foul: this attempt does not count");
+        dialog.show(v -> {
+            boolean foul = v.ticked;
+            String text = v.text;
             Integer distance = null;
             if (!foul) {
                 int parsed = Measure.parseDistanceCm(text);
@@ -349,7 +321,7 @@ public class RoundDetailActivity extends BaseActivity {
                 distance = parsed;
             }
             Integer distanceCm = distance;
-            change(() -> repo.saveAttempt(currentUser, e.id, round.version, choice + 1,
+            change(() -> repo.saveAttempt(currentUser, e.id, round.version, v.choice + 1,
                     distanceCm, foul));
         });
     }
@@ -395,11 +367,12 @@ public class RoundDetailActivity extends BaseActivity {
                     ? r.name + " (" + r.branchCode + ")" : r.name;
         }
 
-        EntryDialog dialog = new EntryDialog("Add an entrant");
+        FormDialog dialog = new FormDialog(this, "Add an entrant");
         dialog.choice("Who", names, 0);
-        dialog.value(round.isMeasured() ? "Throwing order" : "Lane",
+        dialog.text(round.isMeasured() ? "Throwing order" : "Lane",
                 String.valueOf(firstFreeLane()), InputType.TYPE_CLASS_NUMBER);
-        dialog.show((choice, text, ticked) -> {
+        dialog.show(v -> {
+            String text = v.text;
             int lane;
             try {
                 lane = Integer.parseInt(text);
@@ -407,7 +380,7 @@ public class RoundDetailActivity extends BaseActivity {
                 lane = 0;
             }
             int chosenLane = lane;
-            change(() -> repo.addEntry(currentUser, roundId, candidates.get(choice).id,
+            change(() -> repo.addEntry(currentUser, roundId, candidates.get(v.choice).id,
                     chosenLane));
         });
     }
@@ -436,78 +409,7 @@ public class RoundDetailActivity extends BaseActivity {
         if (!history) {
             return;
         }
-        StringBuilder text = new StringBuilder();
-        for (ScoreAudit a : repo.getRoundAudit(currentUser, roundId)) {
-            text.append(DateUtil.formatTimestamp(a.changedAt)).append("  ")
-                    .append(a.changedByName).append("\n").append(a.newScore);
-            if (!a.reason.isEmpty()) {
-                text.append("\nReason: ").append(a.reason);
-            }
-            text.append("\n\n");
-        }
-        tvAudit.setText(text.length() == 0 ? "No changes recorded yet." : text.toString().trim());
-    }
-
-    private void setText(int viewId, String text) {
-        ((TextView) findViewById(viewId)).setText(text);
-    }
-
-    // =====================================================================
-    // A small pop-up form, built from dialog_entry.xml
-    // =====================================================================
-
-    private interface EntryResult {
-        void onSave(int choice, String text, boolean ticked);
-    }
-
-    /** Shows a list, one value and a tick box; the parts that are not asked for are hidden. */
-    private class EntryDialog {
-        private final String title;
-        private final View form;
-        private final Spinner spinner;
-        private final EditText value;
-        private final CheckBox tick;
-
-        EntryDialog(String title) {
-            this.title = title;
-            form = getLayoutInflater().inflate(R.layout.dialog_entry, null);
-            spinner = form.findViewById(R.id.spEntryChoice);
-            value = form.findViewById(R.id.etEntryValue);
-            tick = form.findViewById(R.id.cbEntryFoul);
-            form.findViewById(R.id.tvEntryChoiceLabel).setVisibility(View.GONE);
-            spinner.setVisibility(View.GONE);
-            tick.setVisibility(View.GONE);
-        }
-
-        void choice(String label, String[] options, int selected) {
-            TextView tv = form.findViewById(R.id.tvEntryChoiceLabel);
-            tv.setText(label);
-            tv.setVisibility(View.VISIBLE);
-            spinner.setVisibility(View.VISIBLE);
-            setSpinnerItems(spinner, options);
-            spinner.setSelection(selected);
-        }
-
-        void value(String label, String text, int inputType) {
-            ((TextView) form.findViewById(R.id.tvEntryValueLabel)).setText(label);
-            value.setInputType(inputType);
-            value.setText(text);
-        }
-
-        void tickBox() {
-            tick.setVisibility(View.VISIBLE);
-        }
-
-        void show(EntryResult result) {
-            new AlertDialog.Builder(RoundDetailActivity.this)
-                    .setTitle(title)
-                    .setView(form)
-                    .setPositiveButton("Save", (dialog, which) -> result.onSave(
-                            Math.max(0, spinner.getSelectedItemPosition()), textOf(value),
-                            tick.isChecked()))
-                    .setNegativeButton("Cancel", null)
-                    .show();
-        }
+        tvAudit.setText(Ui.historyText(repo.getRoundAudit(currentUser, roundId)));
     }
 
     // ----- Downloads -----

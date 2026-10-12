@@ -46,6 +46,8 @@ import com.example.flaviumarena.model.User;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Calendar;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.Locale;
 
 /**
@@ -55,6 +57,8 @@ import java.util.Locale;
 public abstract class BaseActivity extends AppCompatActivity {
 
     private static final String TAG = "FlaviumArena";
+    /** One background thread for the whole app: work is done in the order it was asked. */
+    private static final Executor BACKGROUND = Executors.newSingleThreadExecutor();
 
     // Keys used to pass ids from one screen to the next.
     public static final String EXTRA_SPORT_ID = "sport_id";
@@ -221,22 +225,82 @@ public abstract class BaseActivity extends AppCompatActivity {
         return true;
     }
 
-    /** Builds a file and asks where to save it. Refusals are shown as a message. */
+    /**
+     * Builds a file and asks where to save it. A report reads many records, so it is
+     * built in the background while the screen shows that it is working.
+     */
     protected void download(Download download) {
         if (download == null) {
             return;
         }
-        final ExportFile[] file = new ExportFile[1];
-        if (!attempt(() -> file[0] = download.build(new ExportService(repo, currentUser)))) {
-            return;
-        }
-        pendingExport = file[0];
-        try {
-            (file[0].isPdf() ? savePdf : saveCsv).launch(file[0].fileName);
-        } catch (ActivityNotFoundException e) {
-            pendingExport = null;
-            showMessage("This device has no app for choosing where to save a file.");
-        }
+        ExportService exports = new ExportService(repo, currentUser);
+        runBusy("Preparing the file...", () -> download.build(exports), file -> {
+            pendingExport = file;
+            try {
+                (file.isPdf() ? savePdf : saveCsv).launch(file.fileName);
+            } catch (ActivityNotFoundException e) {
+                pendingExport = null;
+                showMessage("This device has no app for choosing where to save a file.");
+            }
+        });
+    }
+
+    // ----- Work that takes a moment -----
+
+    /** Something that is worked out away from the screen and may be refused. */
+    protected interface Work<T> {
+        T run();
+    }
+
+    /** What to do with the result, back on the screen. */
+    protected interface OnDone<T> {
+        void done(T result);
+    }
+
+    /**
+     * Runs work in the background and shows a "please wait" message meanwhile, so the
+     * screen never freezes. When it finishes, onDone runs on the main thread. A refusal
+     * or a database error is shown as a message, exactly as attempt() does, and the
+     * result is dropped if the screen was closed in the meantime.
+     *
+     * This is the one way a screen should start slow work, which is what every call
+     * becomes once the data is online.
+     */
+    protected <T> void runBusy(String message, Work<T> work, OnDone<T> onDone) {
+        AlertDialog busy = new AlertDialog.Builder(this)
+                .setMessage(message)
+                .setCancelable(false)
+                .create();
+        busy.show();
+        BACKGROUND.execute(() -> {
+            T result = null;
+            String problem = null;
+            try {
+                result = work.run();
+            } catch (ArenaException e) {
+                problem = e.getMessage();
+            } catch (SQLiteException e) {
+                Log.e(TAG, "Database error", e);
+                problem = "The database could not complete this, and nothing was changed. "
+                        + "Close the app and try again.\n\nDetails: " + e.getMessage();
+            } catch (RuntimeException e) {
+                Log.e(TAG, "Unexpected error", e);
+                problem = "Something went wrong and this could not be completed.";
+            }
+            T finished = result;
+            String failure = problem;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+                busy.dismiss();
+                if (failure != null) {
+                    showMessage(failure);
+                } else {
+                    onDone.done(finished);
+                }
+            });
+        });
     }
 
     /** Runs when the person has chosen a place (or cancelled). */
@@ -351,16 +415,21 @@ public abstract class BaseActivity extends AppCompatActivity {
         dialog.show();
     }
 
+    /** Puts text into a TextView of this screen. */
+    protected void setText(int viewId, String text) {
+        ((TextView) findViewById(viewId)).setText(text);
+    }
+
     protected void toast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
-    protected String textOf(EditText field) {
+    public String textOf(EditText field) {
         return field.getText().toString().trim();
     }
 
     /** Number typed in a field, or the fallback when the field is empty or not a number. */
-    protected int numberOf(EditText field, int fallback) {
+    public int numberOf(EditText field, int fallback) {
         try {
             return Integer.parseInt(textOf(field));
         } catch (NumberFormatException e) {
@@ -372,7 +441,7 @@ public abstract class BaseActivity extends AppCompatActivity {
         view.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
-    protected void setSpinnerItems(Spinner spinner, String[] items) {
+    public void setSpinnerItems(Spinner spinner, String[] items) {
         ArrayAdapter<String> adapter =
                 new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, items);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);

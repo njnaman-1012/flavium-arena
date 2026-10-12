@@ -210,7 +210,7 @@ final class MatchStore extends Store {
 
     /** A side of a fixture must be an approved registration of the same category. */
     private void checkSide(String registrationId, Category category) {
-        Cursor c = query(SqliteArenaRepository.REG_SELECT + "WHERE r.id = ?", registrationId);
+        Cursor c = query(RegistrationStore.REG_SELECT + "WHERE r.id = ?", registrationId);
         try {
             if (!c.moveToFirst()) {
                 throw new ValidationException("One of the chosen sides no longer exists.");

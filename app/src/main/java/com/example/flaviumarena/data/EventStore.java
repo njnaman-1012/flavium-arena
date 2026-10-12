@@ -3,6 +3,7 @@ package com.example.flaviumarena.data;
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import com.example.flaviumarena.scoring.EventSummary;
 import com.example.flaviumarena.auth.AccessControl;
 import com.example.flaviumarena.model.AppSettings;
 import com.example.flaviumarena.model.Category;
@@ -472,9 +473,9 @@ final class EventStore extends Store {
             throw new ValidationException("This event is timed, not measured.");
         }
         RuleSet rules = round.rules();
-        int attempts = Math.max(1, rules.getInt("attempts", 3));
-        int finalistCount = Math.max(0, rules.getInt("finalists", 0));
-        int extra = finalistCount > 0 ? Math.max(0, rules.getInt("extra_attempts", 0)) : 0;
+        int attempts = EventSummary.attempts(rules);
+        int finalistCount = EventSummary.finalists(rules);
+        int extra = EventSummary.extraAttempts(rules);
         boolean secondBest = rules.get("tie_break", "").startsWith("Second-best");
 
         List<EventEntry> entries = getEntries(round.id);
@@ -679,6 +680,7 @@ final class EventStore extends Store {
                 a.changedAt = c.getLong(c.getColumnIndexOrThrow("changed_at"));
                 a.action = text(c, "action");
                 a.oldScore = "";
+                a.detailOnly = true;
                 a.newScore = text(c, "detail");
                 a.reason = text(c, "reason");
                 list.add(a);

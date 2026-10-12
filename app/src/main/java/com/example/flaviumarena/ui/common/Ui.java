@@ -6,12 +6,15 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.example.flaviumarena.util.DateUtil;
+import com.example.flaviumarena.model.ScoreAudit;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.model.EventRound;
 import com.example.flaviumarena.model.Match;
 import com.example.flaviumarena.model.Registration;
 
 import java.util.Calendar;
+import java.util.List;
 
 /** Small display helpers shared by the screens. */
 public final class Ui {
@@ -131,6 +134,30 @@ public final class Ui {
             text.append("\n\nMembers\n").append(r.members);
         }
         return text.toString();
+    }
+
+    /**
+     * The history of a match or event as text, newest change first: when, who, what,
+     * and the reason when one was given. A match change shows the score before and
+     * after; an event change is already a sentence.
+     */
+    public static String historyText(List<ScoreAudit> history) {
+        StringBuilder text = new StringBuilder();
+        for (ScoreAudit a : history) {
+            text.append(DateUtil.formatTimestamp(a.changedAt)).append("  ")
+                    .append(a.changedByName).append("\n");
+            if (a.detailOnly) {
+                text.append(a.newScore);
+            } else {
+                text.append(a.action).append(": ").append(a.oldScore).append("  ->  ")
+                        .append(a.newScore);
+            }
+            if (!a.reason.isEmpty()) {
+                text.append("\nReason: ").append(a.reason);
+            }
+            text.append("\n\n");
+        }
+        return text.length() == 0 ? "No changes recorded yet." : text.toString().trim();
     }
 
     /**
