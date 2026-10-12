@@ -3,9 +3,7 @@ package com.example.flaviumarena.ui.events;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.InputType;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -17,6 +15,7 @@ import androidx.appcompat.app.AlertDialog;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.ui.common.RowAdapter;
+import com.example.flaviumarena.ui.common.Ui;
 import com.example.flaviumarena.auth.AccessControl;
 import com.example.flaviumarena.data.ArenaException;
 import com.example.flaviumarena.model.AppSettings;
@@ -164,18 +163,11 @@ public class RoundDetailActivity extends BaseActivity {
         }
         setText(R.id.tvEntrantsHint, hint);
 
-        int gap = (int) (10 * getResources().getDisplayMetrics().density);
         for (EventEntry e : entries) {
-            View row = LayoutInflater.from(this).inflate(R.layout.row_item, rows, false);
             RowAdapter.Row values = new RowAdapter.Row(e.id, e.name, subtitleOf(e), badgeOf(e));
             // The circle shows the position once the entrant has one.
             values.circleText = e.position == null ? "-" : String.valueOf(e.position);
-            RowAdapter.bind(row, values);
-            ((ViewGroup.MarginLayoutParams) row.getLayoutParams()).bottomMargin = gap;
-            if (tappable) {
-                row.setOnClickListener(v -> showEntrantMenu(e));
-            }
-            rows.addView(row);
+            Ui.addCard(rows, values, tappable ? () -> showEntrantMenu(e) : null);
         }
     }
 

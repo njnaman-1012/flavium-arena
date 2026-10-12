@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -52,6 +53,8 @@ import java.util.Locale;
  * small helpers, so the individual activities stay short.
  */
 public abstract class BaseActivity extends AppCompatActivity {
+
+    private static final String TAG = "FlaviumArena";
 
     // Keys used to pass ids from one screen to the next.
     public static final String EXTRA_SPORT_ID = "sport_id";
@@ -271,7 +274,16 @@ public abstract class BaseActivity extends AppCompatActivity {
             action.run();
             return true;
         } catch (ArenaException e) {
+            // Refused for a reason the person can act on: wrong input, no permission,
+            // or someone else changed the record first.
             showMessage(e.getMessage());
+            return false;
+        } catch (SQLiteException e) {
+            // The database itself failed (storage full, damaged file). A change runs in
+            // a transaction, so nothing was half-saved.
+            Log.e(TAG, "Database error", e);
+            showMessage("The database could not complete this, and nothing was changed. "
+                    + "Close the app and try again.\n\nDetails: " + e.getMessage());
             return false;
         }
     }

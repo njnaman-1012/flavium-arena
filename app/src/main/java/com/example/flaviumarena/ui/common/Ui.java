@@ -134,6 +134,24 @@ public final class Ui {
     }
 
     /**
+     * Adds one row_item card to a vertical container, with the usual gap below it.
+     * Pass null as onClick for a card that does nothing when tapped.
+     */
+    public static View addCard(LinearLayout container, RowAdapter.Row row, Runnable onClick) {
+        View card = LayoutInflater.from(container.getContext())
+                .inflate(R.layout.row_item, container, false);
+        RowAdapter.bind(card, row);
+        if (onClick != null) {
+            card.setOnClickListener(v -> onClick.run());
+        }
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = (int) (10 * container.getResources().getDisplayMetrics().density);
+        container.addView(card, params);
+        return card;
+    }
+
+    /**
      * Adds a tile to a vertical container, two tiles per row.
      * "index" is the position of the tile (0, 1, 2, ...).
      */

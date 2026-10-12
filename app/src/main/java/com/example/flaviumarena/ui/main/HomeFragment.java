@@ -19,7 +19,6 @@ import com.example.flaviumarena.ui.auth.LoginActivity;
 import com.example.flaviumarena.ui.branches.BranchPageActivity;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.ui.common.BaseFragment;
-import com.example.flaviumarena.ui.common.RowAdapter;
 import com.example.flaviumarena.ui.common.Ui;
 import com.example.flaviumarena.ui.matches.MatchDetailActivity;
 import com.example.flaviumarena.ui.sports.CategoriesActivity;
@@ -196,22 +195,13 @@ public class HomeFragment extends BaseFragment {
             }
         }
 
-        LayoutInflater inflater = LayoutInflater.from(requireContext());
-        int margin = (int) (10 * getResources().getDisplayMetrics().density);
         for (int i = 0; i < chosen.size() && i < MAX_MATCHES; i++) {
             Match m = chosen.get(i);
-            View card = inflater.inflate(R.layout.row_item, list, false);
-            RowAdapter.bind(card, Ui.matchRow(m));
-            card.setOnClickListener(v -> {
+            Ui.addCard(list, Ui.matchRow(m), () -> {
                 Intent intent = new Intent(requireContext(), MatchDetailActivity.class);
                 intent.putExtra(BaseActivity.EXTRA_MATCH_ID, m.id);
                 startActivity(intent);
             });
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            params.bottomMargin = margin;
-            list.addView(card, params);
         }
         root.findViewById(R.id.tvNoMatches)
                 .setVisibility(chosen.isEmpty() ? View.VISIBLE : View.GONE);

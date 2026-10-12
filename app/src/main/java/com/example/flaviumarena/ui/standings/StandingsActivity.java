@@ -5,7 +5,6 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -271,7 +270,7 @@ public class StandingsActivity extends BaseActivity {
                         m.sideAText() + " vs " + m.sideBText(), line,
                         m.statusLabel() + (m.hasScore() ? "\n" + m.scoreText() : ""),
                         Ui.sportPicture(m.sportName));
-                addCard(rows, row, () -> {
+                Ui.addCard(rows, row, () -> {
                     Intent intent = new Intent(this, MatchDetailActivity.class);
                     intent.putExtra(EXTRA_MATCH_ID, m.id);
                     startActivity(intent);
@@ -316,7 +315,7 @@ public class StandingsActivity extends BaseActivity {
                     e.team ? "" : Registration.branchLine(e.branchName, e.year), result);
             row.circleText = e.position == null ? "-" : String.valueOf(e.position);
             row.imagePath = e.logoPath;
-            addCard(rows, row, () -> {
+            Ui.addCard(rows, row, () -> {
                 Intent intent = new Intent(this, RoundDetailActivity.class);
                 intent.putExtra(EXTRA_ROUND_ID, roundId);
                 startActivity(intent);
@@ -340,16 +339,6 @@ public class StandingsActivity extends BaseActivity {
         title.setTextColor(getColor(R.color.text_primary));
         title.setPadding(0, gap, 0, gap);
         rows.addView(title);
-    }
-
-    /** Adds one row_item card to the container. */
-    private void addCard(LinearLayout rows, RowAdapter.Row row, Runnable onClick) {
-        View card = LayoutInflater.from(this).inflate(R.layout.row_item, rows, false);
-        RowAdapter.bind(card, row);
-        card.setOnClickListener(v -> onClick.run());
-        ((ViewGroup.MarginLayoutParams) card.getLayoutParams()).bottomMargin =
-                (int) (10 * getResources().getDisplayMetrics().density);
-        rows.addView(card);
     }
 
     // ----- Downloads -----

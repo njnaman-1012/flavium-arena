@@ -4,7 +4,6 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -72,16 +71,11 @@ public class MedalsActivity extends BaseActivity {
         List<MedalWin> wins = repo.getMedals(null);
         show(findViewById(R.id.tvNoMedals), wins.isEmpty());
         for (MedalWin win : wins) {
-            View card = LayoutInflater.from(this).inflate(R.layout.row_item, list, false);
-            RowAdapter.bind(card, winRow(win));
-            ((ViewGroup.MarginLayoutParams) card.getLayoutParams()).bottomMargin =
-                    (int) (10 * getResources().getDisplayMetrics().density);
-            card.setOnClickListener(v -> {
+            Ui.addCard(list, winRow(win), () -> {
                 Intent intent = new Intent(this, StandingsActivity.class);
                 intent.putExtra(EXTRA_CATEGORY_ID, win.categoryId);
                 startActivity(intent);
             });
-            list.addView(card);
         }
     }
 

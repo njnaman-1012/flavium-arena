@@ -2,8 +2,6 @@ package com.example.flaviumarena.ui.branches;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.view.LayoutInflater;
-import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -158,7 +156,7 @@ public class BranchPageActivity extends BaseActivity {
         list.removeAllViews();
         show(findViewById(R.id.tvBranchMedalsTitle), !medals.isEmpty());
         for (MedalWin win : medals) {
-            addCard(list, MedalsActivity.winRow(win), () -> {
+            Ui.addCard(list, MedalsActivity.winRow(win), () -> {
                 Intent intent = new Intent(this, StandingsActivity.class);
                 intent.putExtra(EXTRA_CATEGORY_ID, win.categoryId);
                 startActivity(intent);
@@ -175,7 +173,7 @@ public class BranchPageActivity extends BaseActivity {
                     r.sportName + ", " + r.categoryName, sensitive ? r.status : "",
                     Ui.sportPicture(r.sportName));
             row.imagePath = r.logoPath;
-            addCard(list, row, () -> openRegistration(r));
+            Ui.addCard(list, row, () -> openRegistration(r));
         }
         show(findViewById(R.id.tvNoTeams), registrations.isEmpty());
     }
@@ -184,24 +182,13 @@ public class BranchPageActivity extends BaseActivity {
         LinearLayout list = findViewById(R.id.branchMatches);
         list.removeAllViews();
         for (Match m : matches) {
-            addCard(list, Ui.matchRow(m), () -> {
+            Ui.addCard(list, Ui.matchRow(m), () -> {
                 Intent intent = new Intent(this, MatchDetailActivity.class);
                 intent.putExtra(EXTRA_MATCH_ID, m.id);
                 startActivity(intent);
             });
         }
         show(findViewById(R.id.tvNoBranchMatches), matches.isEmpty());
-    }
-
-    /** Adds one row_item card to a vertical container. */
-    private void addCard(LinearLayout container, RowAdapter.Row row, Runnable onClick) {
-        View card = LayoutInflater.from(this).inflate(R.layout.row_item, container, false);
-        RowAdapter.bind(card, row);
-        card.setOnClickListener(v -> onClick.run());
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.bottomMargin = (int) (10 * getResources().getDisplayMetrics().density);
-        container.addView(card, params);
     }
 
     private void openRegistration(Registration r) {

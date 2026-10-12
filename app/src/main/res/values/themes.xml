@@ -119,8 +119,4 @@
         <item name="android:color">@android:color/transparent</item>
     </style>
 
-    <!-- Rounded pop-up used by confirm and message dialogs -->
-    <style name="ThemeOverlay.Arena.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
-        <item name="android:windowBackground">@android:color/transparent</item>
-    </style>
 </resources>
