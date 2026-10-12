@@ -36,6 +36,9 @@ app/src/main/java/com/example/flaviumarena/
               (MatchSummary, EventSummary). No Android, no database.
   data/       Everything that touches the database (see below)
   export/     CSV and PDF downloads
+  sync/       Sharing data between devices: change capture, the engine that sends and
+              applies changes, and the interface a server has to offer. No server is
+              connected yet (see Not built yet).
   util/       Passwords, dates, team logos
   ui/
     common/         BaseActivity, BaseFragment, RowAdapter, FormDialog, Ui helpers
@@ -101,7 +104,7 @@ reported with three exceptions: `PermissionDeniedException`, `ValidationExceptio
 
 ## Database
 
-SQLite, file `flavium_arena.db`, schema version 7. Ids are UUID text. Upgrades run in a
+SQLite, file `flavium_arena.db`, schema version 8. Ids are UUID text. Upgrades run in a
 transaction: if a step fails, the database stays on its old version with its data
 untouched and the app shows a message instead of crashing.
 
@@ -114,6 +117,7 @@ untouched and the app shows a message instead of crashing.
 | 5 | Sets and innings, match events, the PAUSED status, CricHeroes link |
 | 6 | Heats, finals, entrants, attempts and their history |
 | 7 | Login sessions, the Coach role and their sports, one active Branch CR per branch |
+| 8 | Bookkeeping for sharing data between devices; idle until a server is connected |
 
 Standings and medals are never stored. They are worked out from the official results
 each time, so they cannot disagree with them.
@@ -215,11 +219,95 @@ against a temporary database and lists each check.
 | Sport catalogue | `RulesTest`, `SportCatalogueInstrumentedTest`, `LiveLinkTest` |
 | Downloads | `CsvTest`, `ExportInstrumentedTest` |
 | Database upgrades | `DatabaseUpgradeInstrumentedTest` |
+| Sharing between devices | `SyncInstrumentedTest` (two databases, stand-in server) |
+
+## Sharing data between devices
+
+**Status: the logic is built and tested; no server is connected.** Until a Firebase
+project is configured, every installation still has its own data.
+
+### How it works
+
+- SQLite stays the store every screen reads and writes, so the app works offline.
+- Triggers on the shared tables write one line into `sync_outbox` for every row that is
+  added, changed or removed. They are idle until a device is connected.
+- `SyncEngine` sends the queued rows to the server and writes server changes locally.
+- Every row on the server has a revision. A change quotes the revision the device last
+  saw; if the server's copy has moved on, the change is refused, the device takes the
+  server's copy, and the person is told. An old copy can never overwrite newer data.
+- When a change to a match or event is refused, the history lines, sets, events and
+  attempts written with it are dropped too, so the history always matches the score.
+- `RemoteStore` is the interface a server has to offer. The tests use an in-memory
+  stand-in; the online app needs a Cloud Firestore implementation of it.
+
+### What is shared and what is not
+
+| Local table | Shared | Notes |
+|---|---|---|
+| `branches`, `sports`, `categories` | yes | public to read |
+| `registrations` | yes | phone numbers and pending or rejected entries are private |
+| `matches`, `match_periods`, `match_events` | yes | public to read |
+| `event_rounds`, `event_entries`, `event_attempts` | yes | public to read |
+| `score_audit`, `event_audit` | yes | organisers only |
+| `settings`, `admin_audit` | yes | settings public; the log is for Faculty |
+| `coach_sports` | yes | organisers only |
+| `users` | profile only | name, email, role, active, branch. Never the password hash, salt or lockout counters |
+| `sessions` | no | a login session is decided by the server |
+| `sport_templates` | no | built into every installation |
+| standings, medals | not stored | each device works them out from the shared results |
+
+A row keeps its id on every device and on the server (the UUID it was created with), so
+the links between branches, registrations, fixtures and results are preserved.
+
+### Connecting devices for the first time
+
+Two installations that were used separately each have their own festival, with their
+own ids. They are not merged row by row, because that would create duplicates.
+
+1. **One device uploads.** An administrator confirms on the device that holds the real
+   data, and `SyncEngine.uploadAsFestival()` sends everything. The server is reserved
+   for that device first, so a second device cannot upload as well. If the upload is
+   interrupted it continues where it stopped and sends nothing twice.
+2. **Every other device joins.** After the person confirms, `LocalBackup.copy()` keeps a
+   copy of the local database file in the app's `backups` folder, and
+   `SyncEngine.joinFestival()` replaces the shared tables with the server's data.
+   Joining is refused until the first upload is complete.
+
+Local data on a joining device that was never uploaded is replaced, not merged. It
+remains in the backup copy.
+
+### What still has to be built
+
+1. A Firebase project and `app/google-services.json` (see below).
+2. `FirestoreRemoteStore`, the Firestore implementation of `RemoteStore`, with live
+   listeners that call `SyncEngine.applyRemote()`.
+3. Sign-in through Firebase Authentication, and accounts linked to it.
+4. Firestore Security Rules that enforce the permission table above on the server.
+5. A screen for the two steps above, a sync status line, and screens that reload when
+   `SyncEngine.Listener` reports a change.
+6. One session per account across devices.
+
+### Firebase setup (to be done by the project owner)
+
+1. In the Firebase Console create a project.
+2. Add an Android app with the package name `com.example.flaviumarena`.
+3. Download `google-services.json` into `app/`. The file is ignored by git.
+4. Authentication: enable the Email/Password provider.
+5. Firestore: create the database in production mode.
+
+### Billing
+
+Everything above works on the free Spark plan except trusted server code. Two
+requirements need it: session records that a modified app cannot write itself, and
+Faculty creating sign-in accounts for other people. On Firebase that means Cloud
+Functions, which require the pay-as-you-go Blaze plan. Without it, sessions can be
+enforced with Firestore transactions and rules, which stops honest clients but is not
+tamper-proof. Nothing that needs billing has been enabled or deployed.
 
 ## Not built yet
 
-- **Firebase** (authentication, Firestore, security rules, migration of local data).
-  Until then nothing is shared between devices.
+- **The connection to a server.** See "Sharing data between devices" above: the
+  logic is tested with two databases and a stand-in server, but nothing is online.
 - Automatic creation of the next knockout round. The knockout view only shows who
   went through.
 - Net run rate in cricket tables.

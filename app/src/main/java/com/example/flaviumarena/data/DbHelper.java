@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.util.Log;
 
+import com.example.flaviumarena.sync.SyncSchema;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.model.AppSettings;
 
@@ -33,11 +34,14 @@ import java.util.UUID;
  *      event_entries, event_attempts and event_audit.
  *   7  Login sessions (one live session per account), the COACH role with the sports a
  *      coach looks after, and a database rule for one active Branch CR per branch.
+ *   8  Bookkeeping for sharing data between devices (see sync.SyncSchema): a queue of
+ *      local changes, the server revision of each row, and triggers that fill the queue.
+ *      They do nothing until synchronisation is switched on.
  */
 public class DbHelper extends SQLiteOpenHelper {
 
     public static final String DB_NAME = "flavium_arena.db";
-    public static final int DB_VERSION = 7;
+    public static final int DB_VERSION = 8;
     private static final String TAG = "DbHelper";
 
     private final boolean seedDevData;
@@ -128,6 +132,7 @@ public class DbHelper extends SQLiteOpenHelper {
         addVersion6Schema(db);
         addVersion7Schema(db);
         addBranchCrRule(db);
+        SyncSchema.create(db);
 
         SeedData.insertSampleBranches(db);
         if (seedDevData) {
@@ -230,6 +235,13 @@ public class DbHelper extends SQLiteOpenHelper {
             }
             if (oldVersion < 7) {
                 upgradeToVersion7(db);
+            }
+            if (oldVersion < 8) {
+                // Only new tables and triggers; they stay idle until the app is connected.
+                SyncSchema.create(db);
+                writeAdminAudit(db, null, "System", "DATABASE_UPGRADE",
+                        "Upgraded from version 7 to 8. Prepared for sharing data between "
+                                + "devices. No existing data was changed.");
             }
         } catch (RuntimeException e) {
             Log.e(TAG, "Database upgrade from version " + oldVersion + " failed", e);

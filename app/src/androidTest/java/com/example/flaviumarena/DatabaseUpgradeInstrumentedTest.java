@@ -206,8 +206,13 @@ public class DatabaseUpgradeInstrumentedTest {
         assertFalse(repo.getBranch(teams.get(0).branchId).active);
         assertTrue(repo.getFlag("core_can_finalise"));
         assertTrue(repo.getFlag("core_can_appoint_captains"));
-        // One log entry per upgrade step: 1 to 2, 2 to 3, 3 to 4, 4 to 5, 5 to 6, 6 to 7.
-        assertEquals(6, DatabaseUtils.queryNumEntries(db, "admin_audit"));
+        // One log entry per upgrade step, from 1 to 2 up to 7 to 8.
+        assertEquals(7, DatabaseUtils.queryNumEntries(db, "admin_audit"));
+        // Version 8 added the synchronisation bookkeeping, switched off and empty: an
+        // installation that is not connected queues nothing.
+        assertEquals(0, DatabaseUtils.queryNumEntries(db, "sync_outbox"));
+        assertEquals(0, DatabaseUtils.longForQuery(db,
+                "SELECT value FROM sync_state WHERE name = 'capture'", null));
 
         // Version 7 rebuilt the users table for the Coach role and added the rules for
         // one live session per account and one active Branch CR per branch.

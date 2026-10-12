@@ -1,0 +1,616 @@
+package com.example.flaviumarena.sync;
+
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.database.DatabaseUtils;
+import android.database.sqlite.SQLiteConstraintException;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Keeps the local database and the shared server the same.
+ *
+ * The local database stays what every screen reads and writes, so the app works without
+ * a connection. This class does two things around it:
+ *
+ *   pushPending()  sends the rows listed in sync_outbox to the server, oldest first
+ *   applyRemote()  writes changes that came from the server into the local database
+ *
+ * The server is the authority. A local change is sent together with the revision of the
+ * row this device last saw; if the server's copy has moved on, the change is refused,
+ * the server's copy replaces the local one, and a notice says so. An old copy on a
+ * device can therefore never overwrite newer data on the server.
+ */
+public class SyncEngine {
+
+    /** Not connected: the device works on its own data and queues nothing. */
+    public static final int LINK_NONE = 0;
+    /** This device is uploading its data as the festival; not finished yet. */
+    public static final int LINK_UPLOADING = 1;
+    /** Connected: local changes are queued and sent, server changes are applied. */
+    public static final int LINK_CONNECTED = 2;
+
+    /** Told after server changes were written locally, with the tables they touched. */
+    public interface Listener {
+        void onRemoteChanges(Set<String> tables);
+    }
+
+    /** A snapshot for a status line: is it connected, is anything waiting, did it work. */
+    public static class Status {
+        public int link;
+        public int pending;
+        /** Milliseconds; 0 when there has not been a complete exchange yet. */
+        public long lastSync;
+        /** Why the last attempt stopped, or "" when it completed. */
+        public String lastError = "";
+    }
+
+    private final SQLiteOpenHelper helper;
+    private final RemoteStore remote;
+    private Listener listener;
+    private String lastError = "";
+    /** Things the person should be told: conflicts, refusals, rows that could not be applied. */
+    private final List<String> notices = new ArrayList<>();
+
+    public SyncEngine(SQLiteOpenHelper helper, RemoteStore remote) {
+        this.helper = helper;
+        this.remote = remote;
+    }
+
+    // =====================================================================
+    // Switching on
+    // =====================================================================
+
+    public boolean isEnabled() {
+        return state(SyncSchema.STATE_CAPTURE) == 1;
+    }
+
+    public void setListener(Listener listener) {
+        this.listener = listener;
+    }
+
+    public Status status() {
+        Status status = new Status();
+        status.link = (int) state(SyncSchema.STATE_LINK);
+        status.pending = pendingCount();
+        status.lastSync = state(SyncSchema.STATE_LAST_SYNC);
+        status.lastError = lastError;
+        return status;
+    }
+
+    /** True when this device holds festival data of its own (more than empty tables). */
+    public boolean hasLocalFestival() {
+        SQLiteDatabase db = helper.getReadableDatabase();
+        return DatabaseUtils.queryNumEntries(db, "sports") > 0
+                || DatabaseUtils.queryNumEntries(db, "registrations") > 0
+                || DatabaseUtils.queryNumEntries(db, "matches") > 0;
+    }
+
+    /**
+     * FIRST DEVICE. Uploads this device's data as the shared festival. To be called only
+     * after an administrator has confirmed that this device is the one to copy from.
+     *
+     * It is refused when the server already has a festival or another device is
+     * uploading one, so two devices can never both become the source. It can be
+     * interrupted at any point (no connection, app closed): calling it again continues
+     * where it stopped and sends nothing twice. Other devices can join only after the
+     * last row has arrived.
+     */
+    public void uploadAsFestival() {
+        long link = state(SyncSchema.STATE_LINK);
+        if (link == LINK_CONNECTED) {
+            throw new SyncException("This device is already connected to the shared festival.");
+        }
+        long device = deviceId();
+        RemoteStore.Dataset dataset = remote.dataset();
+        if (dataset.ready || (dataset.owner != 0 && dataset.owner != device)
+                || !remote.claim(device)) {
+            throw new SyncException("The server already has a festival, or another device is "
+                    + "uploading one. This device has to join it instead of uploading.");
+        }
+        if (link == LINK_NONE) {
+            seedRemote();
+            setState(helper.getWritableDatabase(), SyncSchema.STATE_LINK, LINK_UPLOADING);
+        }
+        pushPending();
+        if (pendingCount() > 0) {
+            throw new SyncException("Some records were not accepted by the server, so the "
+                    + "upload is not complete. Check the notices and try again.");
+        }
+        remote.markReady(device);
+        SQLiteDatabase db = helper.getWritableDatabase();
+        setState(db, SyncSchema.STATE_LINK, LINK_CONNECTED);
+        setState(db, SyncSchema.STATE_LAST_SYNC, System.currentTimeMillis());
+    }
+
+    /**
+     * EVERY OTHER DEVICE. Replaces this device's shared tables with the festival on the
+     * server. To be called only after the person has confirmed it and a copy of the
+     * local database has been kept (see LocalBackup), because local festival data that
+     * was never uploaded is not merged: it is replaced.
+     *
+     * It is refused until a festival has been uploaded completely. If it is interrupted
+     * the device stays unconnected and joining again starts cleanly.
+     */
+    public void joinFestival() {
+        if (state(SyncSchema.STATE_LINK) != LINK_NONE) {
+            throw new SyncException("This device is already connected, or is the one "
+                    + "uploading the festival.");
+        }
+        if (!remote.dataset().ready) {
+            throw new SyncException("There is no complete festival on the server yet. The "
+                    + "first device has to finish uploading before others can join.");
+        }
+        adoptRemote();
+        SQLiteDatabase db = helper.getWritableDatabase();
+        setState(db, SyncSchema.STATE_LINK, LINK_CONNECTED);
+        setState(db, SyncSchema.STATE_LAST_SYNC, System.currentTimeMillis());
+    }
+
+    /**
+     * One complete exchange: receive what is new, then send what is waiting. Receiving
+     * first means a change that lost to a newer server version is dropped before it is
+     * sent. Returns false, with the reason in status().lastError, when the server could
+     * not be reached; everything stays queued.
+     */
+    public boolean sync() {
+        if (state(SyncSchema.STATE_LINK) != LINK_CONNECTED) {
+            return false;
+        }
+        try {
+            pull();
+            pushPending();
+            pull();
+            lastError = "";
+            setState(helper.getWritableDatabase(), SyncSchema.STATE_LAST_SYNC,
+                    System.currentTimeMillis());
+            return true;
+        } catch (RemoteStore.Unavailable e) {
+            lastError = e.getMessage();
+            return false;
+        }
+    }
+
+    /** Switches change capture on and queues every local row for upload. */
+    private void seedRemote() {
+        SQLiteDatabase db = helper.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (String table : SyncSchema.TABLES) {
+                db.execSQL("INSERT OR REPLACE INTO sync_outbox (table_name, row_key, deleted) "
+                        + "SELECT '" + table + "', " + keySql(table) + ", 0 FROM " + table);
+            }
+            setState(db, SyncSchema.STATE_CAPTURE, 1);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    /** Empties the shared tables, loads the server's rows and switches change capture on. */
+    private void adoptRemote() {
+        List<Change> everything = remote.changesSince(0);
+        SQLiteDatabase db = helper.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            setState(db, SyncSchema.STATE_CAPTURE, 0);
+            List<String> reversed = new ArrayList<>(Arrays.asList(SyncSchema.TABLES));
+            Collections.reverse(reversed);
+            for (String table : reversed) {
+                db.delete(table, null, null);
+            }
+            db.delete("sessions", null, null);
+            db.delete("sync_outbox", null, null);
+            db.delete("sync_rows", null, null);
+            setState(db, SyncSchema.STATE_CURSOR, 0);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+        applyRemote(everything);
+        setState(helper.getWritableDatabase(), SyncSchema.STATE_CAPTURE, 1);
+    }
+
+    // =====================================================================
+    // Local changes to the server
+    // =====================================================================
+
+    public int pendingCount() {
+        return (int) DatabaseUtils.queryNumEntries(helper.getReadableDatabase(), "sync_outbox");
+    }
+
+    /**
+     * Sends every queued change. Returns how many the server accepted. When the server
+     * cannot be reached the method stops with RemoteStore.Unavailable and the remaining
+     * changes stay queued for the next attempt; calling it again never sends a change
+     * twice, because a line leaves the queue only when the server has confirmed it.
+     */
+    public int pushPending() {
+        int sent = 0;
+        for (long[] entry : queued()) {
+            if (pushOne(entry[0])) {
+                sent++;
+            }
+        }
+        return sent;
+    }
+
+    /** Queue lines in sending order: additions and changes parents first, removals children first. */
+    private List<long[]> queued() {
+        final List<String> order = Arrays.asList(SyncSchema.TABLES);
+        List<long[]> entries = new ArrayList<>();
+        Cursor c = helper.getReadableDatabase().rawQuery(
+                "SELECT seq, table_name, deleted FROM sync_outbox", null);
+        try {
+            while (c.moveToNext()) {
+                int position = order.indexOf(c.getString(1));
+                boolean deleted = c.getInt(2) == 1;
+                entries.add(new long[]{c.getLong(0), deleted ? 1 : 0,
+                        deleted ? -position : position});
+            }
+        } finally {
+            c.close();
+        }
+        Collections.sort(entries, new Comparator<long[]>() {
+            @Override
+            public int compare(long[] x, long[] y) {
+                if (x[1] != y[1]) {
+                    return Long.compare(x[1], y[1]);   // changes before removals
+                }
+                if (x[2] != y[2]) {
+                    return Long.compare(x[2], y[2]);
+                }
+                return Long.compare(x[0], y[0]);
+            }
+        });
+        return entries;
+    }
+
+    private boolean pushOne(long seq) {
+        SQLiteDatabase db = helper.getWritableDatabase();
+        String table;
+        String key;
+        Cursor c = db.rawQuery("SELECT table_name, row_key FROM sync_outbox WHERE seq = ?",
+                new String[]{String.valueOf(seq)});
+        try {
+            if (!c.moveToFirst()) {
+                return false; // changed again meanwhile: a newer line replaces it
+            }
+            table = c.getString(0);
+            key = c.getString(1);
+        } finally {
+            c.close();
+        }
+        // What is sent is the row as it is now, not as it was when the line was written.
+        Change local = readLocal(table, key);
+        long baseRev = revOf(db, table, key);
+        try {
+            long rev = remote.push(local, baseRev);
+            confirm(db, seq, table, key, rev);
+            return true;
+        } catch (RemoteStore.Conflict conflict) {
+            if (local.sameContentAs(conflict.current)) {
+                // The server already has exactly this: an earlier attempt got through
+                // but its answer was lost. Nothing to resolve.
+                confirm(db, seq, table, key, conflict.current.rev);
+                return true;
+            }
+            dropQueuedDependents(table, key);
+            takeServerCopy(conflict.current, table, key);
+            notices.add("Your change to " + describe(table) + " was not saved because someone "
+                    + "else changed it first. The latest version is now shown.");
+            return false;
+        } catch (RemoteStore.Refused refused) {
+            dropQueuedDependents(table, key);
+            takeServerCopy(remote.get(table, key), table, key);
+            notices.add("Your change to " + describe(table) + " was not accepted: "
+                    + refused.getMessage());
+            return false;
+        }
+    }
+
+    private void confirm(SQLiteDatabase db, long seq, String table, String key, long rev) {
+        db.beginTransaction();
+        try {
+            setRev(db, table, key, rev);
+            db.delete("sync_outbox", "seq = ?", new String[]{String.valueOf(seq)});
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    /**
+     * Gives up the unsent rows that belong to a row whose change was not accepted. A
+     * score that lost to someone else's must not leave its history line, its sets or
+     * its events behind: they describe a state the match never officially had.
+     */
+    private void dropQueuedDependents(String table, String key) {
+        SQLiteDatabase db = helper.getWritableDatabase();
+        for (String[] dependent : SyncSchema.DEPENDENTS) {
+            if (!dependent[1].equals(table)) {
+                continue;
+            }
+            List<String> childKeys = new ArrayList<>();
+            Cursor c = db.rawQuery("SELECT o.row_key FROM sync_outbox o JOIN " + dependent[0]
+                    + " child ON child.id = o.row_key WHERE o.table_name = ? AND child."
+                    + dependent[2] + " = ?", new String[]{dependent[0], key});
+            try {
+                while (c.moveToNext()) {
+                    childKeys.add(c.getString(0));
+                }
+            } finally {
+                c.close();
+            }
+            for (String childKey : childKeys) {
+                dropQueuedDependents(dependent[0], childKey);
+                takeServerCopy(remote.get(dependent[0], childKey), dependent[0], childKey);
+            }
+        }
+    }
+
+    /** Gives up a local change: the row becomes what the server has (or disappears). */
+    private void takeServerCopy(Change server, String table, String key) {
+        SQLiteDatabase db = helper.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("sync_outbox", "table_name = ? AND row_key = ?", new String[]{table, key});
+            write(db, server == null ? new Change(table, key, true, null) : server);
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    // =====================================================================
+    // Server changes to the local database
+    // =====================================================================
+
+    /** Asks the server for everything this device has not seen yet and applies it. */
+    public int pull() {
+        List<Change> changes = remote.changesSince(state(SyncSchema.STATE_CURSOR));
+        applyRemote(changes);
+        return changes.size();
+    }
+
+    /**
+     * Writes changes from the server into the local database. This is also what a live
+     * listener calls when the server announces a change.
+     */
+    public void applyRemote(List<Change> changes) {
+        final List<String> order = Arrays.asList(SyncSchema.TABLES);
+        List<Change> sorted = new ArrayList<>(changes);
+        Collections.sort(sorted, new Comparator<Change>() {
+            @Override
+            public int compare(Change x, Change y) {
+                if (x.deleted != y.deleted) {
+                    return x.deleted ? 1 : -1;
+                }
+                int px = order.indexOf(x.table);
+                int py = order.indexOf(y.table);
+                if (px != py) {
+                    return x.deleted ? py - px : px - py;
+                }
+                return Long.compare(x.rev, y.rev);
+            }
+        });
+
+        SQLiteDatabase db = helper.getWritableDatabase();
+        long cursor = state(SyncSchema.STATE_CURSOR);
+        Set<String> touched = new HashSet<>();
+        for (Change change : sorted) {
+            if (!order.contains(change.table)) {
+                continue;
+            }
+            cursor = Math.max(cursor, change.rev);
+            if (change.rev <= revOf(db, change.table, change.key)) {
+                continue; // already have this revision or a newer one
+            }
+            // A local change to the same row that has not been sent loses: the server's
+            // version is newer than what that change was based on. The rows written with
+            // it go too.
+            boolean unsent = DatabaseUtils.queryNumEntries(db, "sync_outbox",
+                    "table_name = ? AND row_key = ?", new String[]{change.table, change.key}) > 0;
+            if (unsent) {
+                dropQueuedDependents(change.table, change.key);
+            }
+            db.beginTransaction();
+            try {
+                if (unsent) {
+                    db.delete("sync_outbox", "table_name = ? AND row_key = ?",
+                            new String[]{change.table, change.key});
+                    notices.add("Your unsent change to " + describe(change.table)
+                            + " was replaced by a newer version from another device.");
+                }
+                write(db, change);
+                touched.add(change.table);
+                db.setTransactionSuccessful();
+            } catch (SQLiteConstraintException e) {
+                // For example a different local record with the same name. It is reported,
+                // never forced: forcing it would silently destroy one of the two.
+                notices.add("A change to " + describe(change.table) + " from another device "
+                        + "could not be applied here: " + e.getMessage());
+            } finally {
+                db.endTransaction();
+            }
+        }
+        setState(db, SyncSchema.STATE_CURSOR, cursor);
+        if (listener != null && !touched.isEmpty()) {
+            listener.onRemoteChanges(touched);
+        }
+    }
+
+    /** Writes one server row (or removal) without the triggers queuing it again. */
+    private void write(SQLiteDatabase db, Change change) {
+        long capture = state(SyncSchema.STATE_CAPTURE);
+        setState(db, SyncSchema.STATE_CAPTURE, 0);
+        try {
+            String where = keyWhere(change.table);
+            String[] keyValues = change.key.split("\\|", -1);
+            if (change.deleted) {
+                db.delete(change.table, where, keyValues);
+            } else {
+                ContentValues cv = new ContentValues();
+                for (Map.Entry<String, Object> value : change.values.entrySet()) {
+                    if (SyncSchema.isLocalOnly(change.table, value.getKey())) {
+                        continue; // never accept a password hash from anywhere
+                    }
+                    put(cv, value.getKey(), value.getValue());
+                }
+                // An UPDATE keeps the row in place. (Replacing it would remove the rows
+                // that depend on it, such as the sets of a match.)
+                if (db.update(change.table, cv, where, keyValues) == 0) {
+                    if ("users".equals(change.table)) {
+                        // An account that arrives from the server has no password on this
+                        // device: it can only sign in through the server.
+                        cv.put("salt", "");
+                        cv.put("password_hash", "");
+                    }
+                    db.insertOrThrow(change.table, null, cv);
+                }
+            }
+            setRev(db, change.table, change.key, change.rev);
+        } finally {
+            setState(db, SyncSchema.STATE_CAPTURE, capture);
+        }
+    }
+
+    // =====================================================================
+    // Notices
+    // =====================================================================
+
+    /** What happened that the person should know about. Asking clears the list. */
+    public List<String> takeNotices() {
+        List<String> copy = new ArrayList<>(notices);
+        notices.clear();
+        return copy;
+    }
+
+    private static String describe(String table) {
+        return "a record in \"" + table.replace('_', ' ') + "\"";
+    }
+
+    // =====================================================================
+    // Reading and bookkeeping
+    // =====================================================================
+
+    /** The local row as a change, without the columns that never leave the device. */
+    private Change readLocal(String table, String key) {
+        Cursor c = helper.getReadableDatabase().rawQuery("SELECT * FROM " + table + " WHERE "
+                + keyWhere(table), key.split("\\|", -1));
+        try {
+            if (!c.moveToFirst()) {
+                return new Change(table, key, true, null);
+            }
+            Map<String, Object> values = new LinkedHashMap<>();
+            for (int i = 0; i < c.getColumnCount(); i++) {
+                String column = c.getColumnName(i);
+                if (SyncSchema.isLocalOnly(table, column)) {
+                    continue;
+                }
+                switch (c.getType(i)) {
+                    case Cursor.FIELD_TYPE_NULL:
+                        values.put(column, null);
+                        break;
+                    case Cursor.FIELD_TYPE_INTEGER:
+                        values.put(column, c.getLong(i));
+                        break;
+                    case Cursor.FIELD_TYPE_FLOAT:
+                        values.put(column, c.getDouble(i));
+                        break;
+                    default:
+                        values.put(column, c.getString(i));
+                }
+            }
+            return new Change(table, key, false, values);
+        } finally {
+            c.close();
+        }
+    }
+
+    private static void put(ContentValues cv, String column, Object value) {
+        if (value == null) {
+            cv.putNull(column);
+        } else if (value instanceof Long) {
+            cv.put(column, (Long) value);
+        } else if (value instanceof Integer) {
+            cv.put(column, ((Integer) value).longValue());
+        } else if (value instanceof Double) {
+            cv.put(column, (Double) value);
+        } else {
+            cv.put(column, String.valueOf(value));
+        }
+    }
+
+    private static String keyWhere(String table) {
+        StringBuilder where = new StringBuilder();
+        for (String column : SyncSchema.keyColumns(table)) {
+            where.append(where.length() > 0 ? " AND " : "").append(column).append(" = ?");
+        }
+        return where.toString();
+    }
+
+    private static String keySql(String table) {
+        StringBuilder sql = new StringBuilder();
+        for (String column : SyncSchema.keyColumns(table)) {
+            sql.append(sql.length() > 0 ? " || '|' || " : "").append(column);
+        }
+        return sql.toString();
+    }
+
+    private static long revOf(SQLiteDatabase db, String table, String key) {
+        Cursor c = db.rawQuery("SELECT rev FROM sync_rows WHERE table_name = ? AND row_key = ?",
+                new String[]{table, key});
+        try {
+            return c.moveToFirst() ? c.getLong(0) : 0;
+        } finally {
+            c.close();
+        }
+    }
+
+    private static void setRev(SQLiteDatabase db, String table, String key, long rev) {
+        ContentValues cv = new ContentValues();
+        cv.put("table_name", table);
+        cv.put("row_key", key);
+        cv.put("rev", rev);
+        db.insertWithOnConflict("sync_rows", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    /** A number kept between runs of the app; 0 when it has never been set. */
+    private long state(String name) {
+        Cursor c = helper.getReadableDatabase().rawQuery(
+                "SELECT value FROM sync_state WHERE name = ?", new String[]{name});
+        try {
+            return c.moveToFirst() ? c.getLong(0) : 0;
+        } finally {
+            c.close();
+        }
+    }
+
+    private static void setState(SQLiteDatabase db, String name, long value) {
+        ContentValues cv = new ContentValues();
+        cv.put("name", name);
+        cv.put("value", value);
+        db.insertWithOnConflict("sync_state", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    /** The number that identifies this installation; chosen at random the first time. */
+    private long deviceId() {
+        long id = state(SyncSchema.STATE_DEVICE);
+        if (id == 0) {
+            id = (new java.security.SecureRandom().nextLong() >>> 2) + 1;
+            setState(helper.getWritableDatabase(), SyncSchema.STATE_DEVICE, id);
+        }
+        return id;
+    }
+}
