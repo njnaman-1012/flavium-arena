@@ -28,7 +28,7 @@ import com.example.flaviumarena.model.User;
 import com.example.flaviumarena.scoring.Medals;
 import com.example.flaviumarena.util.DateUtil;
 import com.example.flaviumarena.util.PasswordUtil;
-import com.example.flaviumarena.util.StandingsCalculator;
+import com.example.flaviumarena.scoring.StandingsCalculator;
 
 import static com.example.flaviumarena.data.Sql.*;
 

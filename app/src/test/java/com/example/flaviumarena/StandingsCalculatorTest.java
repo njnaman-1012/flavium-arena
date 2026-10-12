@@ -6,7 +6,7 @@ import com.example.flaviumarena.model.Category;
 import com.example.flaviumarena.model.Match;
 import com.example.flaviumarena.model.Registration;
 import com.example.flaviumarena.model.StandingRow;
-import com.example.flaviumarena.util.StandingsCalculator;
+import com.example.flaviumarena.scoring.StandingsCalculator;
 
 import org.junit.Test;
 

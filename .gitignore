@@ -14,3 +14,6 @@
 .cxx
 local.properties
 google-services.json
+# Signing keys never belong in the repository
+*.jks
+*.keystore

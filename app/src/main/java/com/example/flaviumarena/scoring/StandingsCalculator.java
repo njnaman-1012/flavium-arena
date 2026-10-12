@@ -1,4 +1,4 @@
-package com.example.flaviumarena.util;
+package com.example.flaviumarena.scoring;
 
 import com.example.flaviumarena.model.Category;
 import com.example.flaviumarena.model.Match;
