@@ -12,7 +12,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FlaviumArena">
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.main.MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -22,30 +22,30 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".OnboardingActivity" />
-        <activity android:name=".FacultySetupActivity" />
-        <activity android:name=".SettingsActivity" />
-        <activity android:name=".BranchesActivity" />
-        <activity android:name=".BranchPageActivity" />
-        <activity android:name=".LoginActivity" />
-        <activity android:name=".SportsActivity" />
-        <activity android:name=".SportCatalogueActivity" />
-        <activity android:name=".CategoriesActivity" />
-        <activity android:name=".CategoryDetailActivity" />
-        <activity android:name=".CategoryEditActivity" />
-        <activity android:name=".RegistrationsActivity" />
-        <activity android:name=".RegistrationEditActivity" />
-        <activity android:name=".FixturesActivity" />
-        <activity android:name=".FixtureEditActivity" />
-        <activity android:name=".MatchDetailActivity" />
-        <activity android:name=".RoundsActivity" />
-        <activity android:name=".RoundEditActivity" />
-        <activity android:name=".RoundDetailActivity" />
-        <activity android:name=".StandingsActivity" />
-        <activity android:name=".MedalsActivity" />
-        <activity android:name=".ReportsActivity" />
-        <activity android:name=".UsersActivity" />
-        <activity android:name=".SelfTestActivity" />
+        <activity android:name=".ui.main.OnboardingActivity" />
+        <activity android:name=".ui.auth.FacultySetupActivity" />
+        <activity android:name=".ui.admin.SettingsActivity" />
+        <activity android:name=".ui.branches.BranchesActivity" />
+        <activity android:name=".ui.branches.BranchPageActivity" />
+        <activity android:name=".ui.auth.LoginActivity" />
+        <activity android:name=".ui.sports.SportsActivity" />
+        <activity android:name=".ui.sports.SportCatalogueActivity" />
+        <activity android:name=".ui.sports.CategoriesActivity" />
+        <activity android:name=".ui.sports.CategoryDetailActivity" />
+        <activity android:name=".ui.sports.CategoryEditActivity" />
+        <activity android:name=".ui.registrations.RegistrationsActivity" />
+        <activity android:name=".ui.registrations.RegistrationEditActivity" />
+        <activity android:name=".ui.matches.FixturesActivity" />
+        <activity android:name=".ui.matches.FixtureEditActivity" />
+        <activity android:name=".ui.matches.MatchDetailActivity" />
+        <activity android:name=".ui.events.RoundsActivity" />
+        <activity android:name=".ui.events.RoundEditActivity" />
+        <activity android:name=".ui.events.RoundDetailActivity" />
+        <activity android:name=".ui.standings.StandingsActivity" />
+        <activity android:name=".ui.standings.MedalsActivity" />
+        <activity android:name=".ui.admin.ReportsActivity" />
+        <activity android:name=".ui.admin.UsersActivity" />
+        <activity android:name=".ui.admin.SelfTestActivity" />
     </application>
 
 </manifest>
