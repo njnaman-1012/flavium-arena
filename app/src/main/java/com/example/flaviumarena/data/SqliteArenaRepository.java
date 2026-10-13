@@ -84,6 +84,11 @@ public class SqliteArenaRepository implements ArenaRepository {
     }
 
     @Override
+    public User loginVerified(String userId, String expectedRole, String device) {
+        return accounts.loginVerified(userId, expectedRole, device);
+    }
+
+    @Override
     public User resumeSession(String sessionId) {
         return accounts.resumeSession(sessionId);
     }

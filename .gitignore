@@ -17,3 +17,8 @@ google-services.json
 # Signing keys never belong in the repository
 *.jks
 *.keystore
+
+# Logs written by the Firebase emulators
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

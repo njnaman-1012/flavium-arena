@@ -81,6 +81,12 @@ public class RegistrationsActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         if (adapter == null) {
             return;
         }

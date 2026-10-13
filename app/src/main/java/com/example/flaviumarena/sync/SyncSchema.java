@@ -91,6 +91,7 @@ public final class SyncSchema {
                 + "table_name TEXT NOT NULL, "
                 + "row_key TEXT NOT NULL, "
                 + "rev INTEGER NOT NULL, "
+                + "complete INTEGER NOT NULL DEFAULT 1, "
                 + "PRIMARY KEY (table_name, row_key))");
 
         db.execSQL("CREATE TABLE sync_state ("
@@ -105,6 +106,44 @@ public final class SyncSchema {
                 + "', abs(random()) + 1)");
 
         createTriggers(db);
+    }
+
+    /** Version 8 to 9: remembers whether a row is complete or only the public copy. */
+    public static void upgradeToVersion9(SQLiteDatabase db) {
+        db.execSQL("ALTER TABLE sync_rows ADD COLUMN complete INTEGER NOT NULL DEFAULT 1");
+    }
+
+    /**
+     * SQL that finds the sport a row belongs to, given the row's key; null for tables
+     * that belong to no sport. A fixture's sport is its category's sport, a set's sport
+     * is its fixture's, and so on.
+     */
+    static String sportSql(String table) {
+        String ofCategory = "(SELECT sport_id FROM categories WHERE id = ";
+        String ofMatch = "(SELECT c.sport_id FROM matches m JOIN categories c "
+                + "ON c.id = m.category_id WHERE m.id = ";
+        String ofRound = "(SELECT c.sport_id FROM event_rounds r JOIN categories c "
+                + "ON c.id = r.category_id WHERE r.id = ";
+        switch (table) {
+            case "categories":
+                return "SELECT sport_id FROM categories WHERE id = ?";
+            case "registrations":
+            case "matches":
+            case "event_rounds":
+                return "SELECT " + ofCategory + "t.category_id) FROM " + table + " t WHERE t.id = ?";
+            case "match_periods":
+            case "match_events":
+            case "score_audit":
+                return "SELECT " + ofMatch + "t.match_id) FROM " + table + " t WHERE t.id = ?";
+            case "event_entries":
+            case "event_audit":
+                return "SELECT " + ofRound + "t.round_id) FROM " + table + " t WHERE t.id = ?";
+            case "event_attempts":
+                return "SELECT " + ofRound + "e.round_id) FROM event_attempts t "
+                        + "JOIN event_entries e ON e.id = t.entry_id WHERE t.id = ?";
+            default:
+                return null;
+        }
     }
 
     /**

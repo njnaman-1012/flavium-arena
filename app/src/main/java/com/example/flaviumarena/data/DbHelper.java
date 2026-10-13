@@ -37,11 +37,12 @@ import java.util.UUID;
  *   8  Bookkeeping for sharing data between devices (see sync.SyncSchema): a queue of
  *      local changes, the server revision of each row, and triggers that fill the queue.
  *      They do nothing until synchronisation is switched on.
+ *   9  The bookkeeping remembers whether a row is complete or the public copy.
  */
 public class DbHelper extends SQLiteOpenHelper {
 
     public static final String DB_NAME = "flavium_arena.db";
-    public static final int DB_VERSION = 8;
+    public static final int DB_VERSION = 9;
     private static final String TAG = "DbHelper";
 
     private final boolean seedDevData;
@@ -242,6 +243,10 @@ public class DbHelper extends SQLiteOpenHelper {
                 writeAdminAudit(db, null, "System", "DATABASE_UPGRADE",
                         "Upgraded from version 7 to 8. Prepared for sharing data between "
                                 + "devices. No existing data was changed.");
+            } else if (oldVersion < 9) {
+                // Version 8 created the bookkeeping without this column; a database that
+                // goes straight to 9 gets it from SyncSchema.create above.
+                SyncSchema.upgradeToVersion9(db);
             }
         } catch (RuntimeException e) {
             Log.e(TAG, "Database upgrade from version " + oldVersion + " failed", e);

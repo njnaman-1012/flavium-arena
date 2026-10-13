@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -32,6 +33,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.example.flaviumarena.cloud.Cloud;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.main.MainActivity;
 import com.example.flaviumarena.auth.AccessControl;
@@ -46,6 +48,7 @@ import com.example.flaviumarena.model.User;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Calendar;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.Locale;
@@ -54,7 +57,7 @@ import java.util.Locale;
  * Parent of every screen. It provides the repository, the logged-in user and a few
  * small helpers, so the individual activities stay short.
  */
-public abstract class BaseActivity extends AppCompatActivity {
+public abstract class BaseActivity extends AppCompatActivity implements Cloud.Observer {
 
     private static final String TAG = "FlaviumArena";
     /** One background thread for the whole app: work is done in the order it was asked. */
@@ -143,6 +146,53 @@ public abstract class BaseActivity extends AppCompatActivity {
      */
     protected User userIn(String sportId) {
         return AccessControl.inSport(currentUser, sportId);
+    }
+
+    /**
+     * Shows the current data. A screen puts its loading here; it runs when the screen
+     * opens (from onResume) and again when shared data changes while it is on screen.
+     */
+    protected void refreshScreen() {
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Cloud cloud = Cloud.get(this);
+        cloud.addObserver(this);
+        cloud.onForeground();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        Cloud cloud = Cloud.get(this);
+        cloud.removeObserver(this);
+        cloud.onBackground();
+    }
+
+    /**
+     * Shared data, or the connection, changed while this screen is open: show the
+     * latest, and anything the person should be told (a conflict, a refusal).
+     */
+    @Override
+    public void onCloudChanged() {
+        if (databaseFailed || isFinishing() || isDestroyed()) {
+            return;
+        }
+        Cloud cloud = Cloud.get(this);
+        if (cloud.takeSessionTakenOver() && currentUser != null) {
+            Session.logout(this, repo, currentUser);
+            cloud.signOut();
+            showMessage("You have been logged out because this account signed in on "
+                    + "another device.");
+        }
+        currentUser = Session.currentUser(this, repo);
+        refreshScreen();
+        List<String> notices = cloud.takeNotices();
+        if (!notices.isEmpty()) {
+            showMessage(TextUtils.join("\n\n", notices));
+        }
     }
 
     /** Sets the layout, the title bar and the padding that keeps content clear of system bars. */
@@ -336,6 +386,7 @@ public abstract class BaseActivity extends AppCompatActivity {
     protected boolean attempt(Runnable action) {
         try {
             action.run();
+            Cloud.get(this).requestSync();
             return true;
         } catch (ArenaException e) {
             // Refused for a reason the person can act on: wrong input, no permission,

@@ -5,6 +5,7 @@ import android.os.Bundle;
 
 import androidx.fragment.app.Fragment;
 
+import com.example.flaviumarena.ui.common.BaseFragment;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.auth.Session;
@@ -46,6 +47,16 @@ public class MainActivity extends BaseActivity {
         });
         if (savedInstanceState == null) {
             showTab(R.id.nav_home);
+        }
+    }
+
+    /** Shared data changed: the tab that is showing loads it again. */
+    @Override
+    protected void refreshScreen() {
+        for (Fragment fragment : getSupportFragmentManager().getFragments()) {
+            if (fragment instanceof BaseFragment) {
+                ((BaseFragment) fragment).reload();
+            }
         }
     }
 

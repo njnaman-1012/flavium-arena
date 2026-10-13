@@ -17,6 +17,20 @@ public abstract class BaseFragment extends Fragment {
         return main().repo;
     }
 
+    /**
+     * Shows the current data. Each tab puts its loading here; it runs when the tab
+     * opens and again when shared data changes while the tab is on screen.
+     */
+    protected void refreshScreen() {
+    }
+
+    /** Lets MainActivity ask the tab that is showing to reload. */
+    public final void reload() {
+        if (isResumed()) {
+            refreshScreen();
+        }
+    }
+
     /** The logged-in user, or null for a guest. */
     protected User user() {
         return main().currentUser;

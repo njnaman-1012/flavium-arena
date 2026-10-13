@@ -11,6 +11,7 @@ import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.core.content.ContextCompat;
 
+import com.example.flaviumarena.cloud.Cloud;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.auth.Session;
@@ -80,6 +81,12 @@ public class LoginActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         // The set-up link is offered only while there is no Faculty account at all.
         show(findViewById(R.id.btnSetupFaculty), !repo.hasFaculty());
     }
@@ -122,6 +129,34 @@ public class LoginActivity extends BaseActivity {
         show(findViewById(R.id.panelDev), devBuild && DevData.account(role) != null);
     }
 
+    /**
+     * This device shares the festival, so the server checks the password and decides
+     * which account it is. The local password is not used at all.
+     */
+    private void loginOnline(final Cloud cloud, final boolean takeOver) {
+        final String email = textOf(etEmail);
+        final String password = etPassword.getText().toString();
+        final String role = chosenRole;
+        final String[] signedInElsewhere = new String[1];
+        runBusy("Signing in...", () -> {
+            try {
+                return cloud.signIn(email, password, role, takeOver);
+            } catch (SessionActiveException e) {
+                signedInElsewhere[0] = e.getMessage();
+                return null;
+            }
+        }, user -> {
+            if (user == null) {
+                showDialog(signedInElsewhere[0], R.drawable.ic_info, false,
+                        "Sign out the other device", "Cancel", () -> login(true));
+                return;
+            }
+            Session.login(this, user);
+            toast("Logged in as " + Role.label(user.role));
+            openHome();
+        });
+    }
+
     private void fillDevAccount() {
         String[] account = DevData.account(chosenRole);
         if (account == null) {
@@ -157,6 +192,11 @@ public class LoginActivity extends BaseActivity {
      * session out, which runs this again with takeOver = true.
      */
     private void login(boolean takeOver) {
+        final Cloud cloud = Cloud.get(this);
+        if (cloud.isConnected()) {
+            loginOnline(cloud, takeOver);
+            return;
+        }
         try {
             User user = repo.login(textOf(etEmail), etPassword.getText().toString(),
                     chosenRole, Build.MODEL, takeOver);

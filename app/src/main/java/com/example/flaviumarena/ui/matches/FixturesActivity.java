@@ -93,6 +93,12 @@ public class FixturesActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         // A fixture belongs to a category, so "Add" is offered only inside one.
         Category shown = categoryId == null ? null : repo.getCategory(categoryId);
         show(findViewById(R.id.btnAdd), shown != null

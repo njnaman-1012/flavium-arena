@@ -58,6 +58,12 @@ public class BranchesActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         boolean canManage = AccessControl.canManageBranches(currentUser);
         TextView tvHeader = findViewById(R.id.tvHeader);
         show(tvHeader, true);

@@ -12,6 +12,8 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
+import com.example.flaviumarena.ui.admin.CloudActivity;
+import com.example.flaviumarena.cloud.Cloud;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.admin.ReportsActivity;
 import com.example.flaviumarena.ui.admin.SelfTestActivity;
@@ -51,6 +53,12 @@ public class MoreFragment extends BaseFragment {
     @Override
     public void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         showProfile();
         buildRows();
     }
@@ -118,6 +126,9 @@ public class MoreFragment extends BaseFragment {
         addSection("Festival");
         addRow(R.drawable.ic_trophy, "Medal table", "", false, () -> open(MedalsActivity.class));
         addRow(R.drawable.ic_users, "Branches", "", false, () -> open(BranchesActivity.class));
+        addRow(R.drawable.ic_live, "Online sharing",
+                Cloud.get(requireContext()).isConnected() ? "Connected" : "", false,
+                () -> open(CloudActivity.class));
         addRow(R.drawable.ic_download, "Reports and downloads", "", false,
                 () -> open(ReportsActivity.class));
         addRow(R.drawable.ic_search, "Search all fixtures", "", false,
@@ -148,6 +159,7 @@ public class MoreFragment extends BaseFragment {
                     main().showDialog("Are you sure you want to log out?", R.drawable.ic_logout,
                             false, "Log out", "Cancel", () -> {
                                 Session.logout(requireContext(), repo(), user());
+                                Cloud.get(requireContext()).signOut();
                                 main().openHome();
                             }));
         }

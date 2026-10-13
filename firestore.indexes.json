@@ -1,0 +1,22 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "priv",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "t", "order": "ASCENDING" },
+        { "fieldPath": "rev", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "priv",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "t", "order": "ASCENDING" },
+        { "fieldPath": "br", "order": "ASCENDING" },
+        { "fieldPath": "rev", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

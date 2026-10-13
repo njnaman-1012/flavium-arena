@@ -70,6 +70,12 @@ public class SportsActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         boolean canManage = AccessControl.canManageSports(currentUser);
         TextView tvHeader = findViewById(R.id.tvHeader);
         tvHeader.setText("Tap a sport to see its categories. Long-press to edit or delete.");

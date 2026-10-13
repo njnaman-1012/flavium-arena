@@ -106,6 +106,12 @@ public class MatchesFragment extends BaseFragment {
     @Override
     public void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         showRows();
     }
 

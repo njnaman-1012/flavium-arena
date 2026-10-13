@@ -12,6 +12,7 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
 
+import com.example.flaviumarena.cloud.Cloud;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.ui.common.RowAdapter;
@@ -23,6 +24,7 @@ import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.User;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -72,6 +74,12 @@ public class UsersActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         if (!AccessControl.canViewAccounts(currentUser)) {
             toast("Only Faculty and Cores can manage accounts.");
             finish();
@@ -129,18 +137,33 @@ public class UsersActivity extends BaseActivity {
         }
         // A Coach has one more choice: the sports they look after.
         boolean coach = Role.COACH.equals(user.role);
-        String[] options = coach
-                ? new String[]{"Edit details and role", "Reset password",
-                user.active ? "Deactivate" : "Reactivate", "Remove account", "Assign sports"}
-                : new String[]{"Edit details and role", "Reset password",
-                user.active ? "Deactivate" : "Reactivate", "Remove account"};
+        // When the festival is shared, passwords are kept by the server.
+        final boolean online = Cloud.get(this).isConnected();
+        List<String> labels = new ArrayList<>(Arrays.asList("Edit details and role",
+                online ? "Send a password-reset email" : "Reset password",
+                user.active ? "Deactivate" : "Reactivate", "Remove account"));
+        if (coach) {
+            labels.add("Assign sports");
+        }
+        if (online) {
+            labels.add("Create the online login");
+        }
+        final String[] options = labels.toArray(new String[0]);
         new AlertDialog.Builder(this)
                 .setTitle(user.name)
                 .setItems(options, (dialog, which) -> {
-                    if (which == 4) {
+                    if (which == options.length - 1 && online) {
+                        showOnlineLoginDialog(user);
+                    } else if (which == 4 && coach) {
                         showCoachSportsDialog(user.id, user.name, user.coachSportIds);
                     } else if (which == 0) {
                         showAccountDialog(user);
+                    } else if (which == 1 && online) {
+                        runBusy("Sending the email...", () -> {
+                            Cloud.get(this).sendPasswordReset(user.email);
+                            return true;
+                        }, done -> showMessage("A password-reset email was sent to "
+                                + user.email + "."));
                     } else if (which == 1) {
                         showPasswordDialog(user);
                     } else if (which == 2) {
@@ -232,6 +255,12 @@ public class UsersActivity extends BaseActivity {
                         if (ok && Role.COACH.equals(role)) {
                             showCoachSportsDialog(created[0], name, new ArrayList<>());
                         }
+                        // When the festival is shared, the account also needs a login
+                        // on the server, with the same email and password.
+                        if (ok && Cloud.get(this).isConnected()) {
+                            createOnlineLogin(textOf(etEmail), etPassword.getText().toString(),
+                                    created[0]);
+                        }
                     } else {
                         attempt(() -> repo.updateUser(currentUser, existing.id, textOf(etName),
                                 textOf(etEmail), role, chosenBranch));
@@ -272,6 +301,29 @@ public class UsersActivity extends BaseActivity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    /** Asks for a password and gives an existing account its login on the server. */
+    private void showOnlineLoginDialog(User user) {
+        EditText etPassword = new EditText(this);
+        etPassword.setHint("Password for the online login (at least 8 characters)");
+        etPassword.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Online login for " + user.name)
+                .setMessage("The person signs in with " + user.email + " and this password.")
+                .setView(etPassword)
+                .setPositiveButton("Create", (dialog, which) ->
+                        createOnlineLogin(user.email, etPassword.getText().toString(), user.id))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void createOnlineLogin(String email, String password, String userId) {
+        runBusy("Creating the online login...", () -> {
+            Cloud.get(this).createLogin(email, password, userId);
+            return true;
+        }, done -> toast("Online login created"));
     }
 
     private void showPasswordDialog(User user) {

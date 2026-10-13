@@ -123,6 +123,24 @@ final class AccountStore extends Store {
         return user;
     }
 
+    public User loginVerified(String userId, String expectedRole, String device) {
+        User user = getUser(userId);
+        if (user == null) {
+            throw new ValidationException("This account is not part of the festival on this "
+                    + "device yet. Synchronise and try again.");
+        }
+        if (!user.active) {
+            throw new PermissionDeniedException("This account has been deactivated. "
+                    + "Contact the Faculty in charge.");
+        }
+        if (!Role.isValid(expectedRole) || !expectedRole.equals(user.role)) {
+            throw new PermissionDeniedException("This account is not registered as "
+                    + Role.label(expectedRole) + ". Go back and choose the role you were given.");
+        }
+        user.sessionId = repo.sessions.openSession(user, device, true);
+        return user;
+    }
+
     public User resumeSession(String sessionId) {
         String userId = repo.sessions.userOfLiveSession(sessionId);
         User user = userId == null ? null : getUser(userId);

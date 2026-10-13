@@ -22,6 +22,14 @@ public final class RepositoryProvider {
         return instance;
     }
 
+    /**
+     * The database itself, for the synchronisation engine, which copies rows between it
+     * and the server. Screens do not use this: they go through the repository.
+     */
+    public static synchronized DbHelper database(Context context) {
+        return helper(context);
+    }
+
     /** The database behind the repository. Only for classes of this package. */
     static synchronized DbHelper helper(Context context) {
         get(context);

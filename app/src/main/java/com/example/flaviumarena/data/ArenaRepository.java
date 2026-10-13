@@ -45,6 +45,14 @@ public interface ArenaRepository {
     User login(String email, String password, String expectedRole, String device,
                boolean takeOver);
 
+    /**
+     * Opens a session for someone whose password the SERVER has just checked (online
+     * sign-in). The local password is not consulted: a device that received its accounts
+     * from the server has none. The account must exist here, be active and have the
+     * expected role. Any earlier local session of the account is ended.
+     */
+    User loginVerified(String userId, String expectedRole, String device);
+
     /** The user of a saved session, or null when that session is no longer live. */
     User resumeSession(String sessionId);
 

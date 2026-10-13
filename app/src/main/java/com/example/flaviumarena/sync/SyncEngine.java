@@ -294,6 +294,14 @@ public class SyncEngine {
         // What is sent is the row as it is now, not as it was when the line was written.
         Change local = readLocal(table, key);
         long baseRev = revOf(db, table, key);
+        if (baseRev > 0 && !isComplete(db, table, key)) {
+            // This device only ever received the public copy of the row (no phone
+            // number, no email), so sending it would erase the rest on the server.
+            takeServerCopy(serverCopy(table, key), table, key);
+            notices.add("Your change to " + describe(table) + " was not sent: this device "
+                    + "does not hold the complete record.");
+            return false;
+        }
         try {
             long rev = remote.push(local, baseRev);
             confirm(db, seq, table, key, rev);
@@ -312,7 +320,7 @@ public class SyncEngine {
             return false;
         } catch (RemoteStore.Refused refused) {
             dropQueuedDependents(table, key);
-            takeServerCopy(remote.get(table, key), table, key);
+            takeServerCopy(serverCopy(table, key), table, key);
             notices.add("Your change to " + describe(table) + " was not accepted: "
                     + refused.getMessage());
             return false;
@@ -322,7 +330,7 @@ public class SyncEngine {
     private void confirm(SQLiteDatabase db, long seq, String table, String key, long rev) {
         db.beginTransaction();
         try {
-            setRev(db, table, key, rev);
+            setRev(db, table, key, rev, true);
             db.delete("sync_outbox", "seq = ?", new String[]{String.valueOf(seq)});
             db.setTransactionSuccessful();
         } finally {
@@ -354,8 +362,20 @@ public class SyncEngine {
             }
             for (String childKey : childKeys) {
                 dropQueuedDependents(dependent[0], childKey);
-                takeServerCopy(remote.get(dependent[0], childKey), dependent[0], childKey);
+                takeServerCopy(serverCopy(dependent[0], childKey), dependent[0], childKey);
             }
+        }
+    }
+
+    /**
+     * The server's copy of a row, or null when it has none or will not show it to this
+     * account. Either way the local change is given up.
+     */
+    private Change serverCopy(String table, String key) {
+        try {
+            return remote.get(table, key);
+        } catch (RemoteStore.Refused e) {
+            return null;
         }
     }
 
@@ -375,6 +395,22 @@ public class SyncEngine {
     // =====================================================================
     // Server changes to the local database
     // =====================================================================
+
+    /**
+     * Reads everything the server lets this device see and applies it. Used after
+     * signing in, when rows that were only known as public copies may now be available
+     * complete. Nothing is removed and nothing is sent.
+     */
+    public int reloadAll() {
+        List<Change> changes = remote.changesSince(0);
+        applyRemote(changes);
+        return changes.size();
+    }
+
+    /** The highest server revision this device has applied; listeners start after it. */
+    public long cursor() {
+        return state(SyncSchema.STATE_CURSOR);
+    }
 
     /** Asks the server for everything this device has not seen yet and applies it. */
     public int pull() {
@@ -413,8 +449,20 @@ public class SyncEngine {
                 continue;
             }
             cursor = Math.max(cursor, change.rev);
-            if (change.rev <= revOf(db, change.table, change.key)) {
-                continue; // already have this revision or a newer one
+            long known = revOf(db, change.table, change.key);
+            boolean knownComplete = known > 0 && isComplete(db, change.table, change.key);
+            if (change.rev < known) {
+                continue; // this device already has something newer
+            }
+            if (PublicView.isSplit(change.table)) {
+                if (!change.complete && knownComplete) {
+                    continue; // the public copy never replaces the complete row
+                }
+                if (change.rev == known && change.complete == knownComplete) {
+                    continue;
+                }
+            } else if (change.rev == known) {
+                continue; // already have this revision
             }
             // A local change to the same row that has not been sent loses: the server's
             // version is newer than what that change was based on. The rows written with
@@ -479,7 +527,7 @@ public class SyncEngine {
                     db.insertOrThrow(change.table, null, cv);
                 }
             }
-            setRev(db, change.table, change.key, change.rev);
+            setRev(db, change.table, change.key, change.rev, change.complete);
         } finally {
             setState(db, SyncSchema.STATE_CAPTURE, capture);
         }
@@ -488,6 +536,10 @@ public class SyncEngine {
     // =====================================================================
     // Notices
     // =====================================================================
+
+    public boolean hasNotices() {
+        return !notices.isEmpty();
+    }
 
     /** What happened that the person should know about. Asking clears the list. */
     public List<String> takeNotices() {
@@ -532,7 +584,23 @@ public class SyncEngine {
                         values.put(column, c.getString(i));
                 }
             }
-            return new Change(table, key, false, values);
+            Change change = new Change(table, key, false, values);
+            Object branch = values.get("branch_id");
+            if (branch != null && ("registrations".equals(table) || "users".equals(table))) {
+                change.branch = String.valueOf(branch);
+            }
+            String sportSql = SyncSchema.sportSql(table);
+            if (sportSql != null) {
+                Cursor s = helper.getReadableDatabase().rawQuery(sportSql, new String[]{key});
+                try {
+                    if (s.moveToFirst() && !s.isNull(0)) {
+                        change.sport = s.getString(0);
+                    }
+                } finally {
+                    s.close();
+                }
+            }
+            return change;
         } finally {
             c.close();
         }
@@ -578,11 +646,23 @@ public class SyncEngine {
         }
     }
 
-    private static void setRev(SQLiteDatabase db, String table, String key, long rev) {
+    private static boolean isComplete(SQLiteDatabase db, String table, String key) {
+        Cursor c = db.rawQuery("SELECT complete FROM sync_rows WHERE table_name = ? "
+                + "AND row_key = ?", new String[]{table, key});
+        try {
+            return !c.moveToFirst() || c.getInt(0) == 1;
+        } finally {
+            c.close();
+        }
+    }
+
+    private static void setRev(SQLiteDatabase db, String table, String key, long rev,
+                               boolean complete) {
         ContentValues cv = new ContentValues();
         cv.put("table_name", table);
         cv.put("row_key", key);
         cv.put("rev", rev);
+        cv.put("complete", complete ? 1 : 0);
         db.insertWithOnConflict("sync_rows", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
@@ -605,7 +685,7 @@ public class SyncEngine {
     }
 
     /** The number that identifies this installation; chosen at random the first time. */
-    private long deviceId() {
+    public long deviceId() {
         long id = state(SyncSchema.STATE_DEVICE);
         if (id == 0) {
             id = (new java.security.SecureRandom().nextLong() >>> 2) + 1;

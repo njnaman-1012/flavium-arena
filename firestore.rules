@@ -1,0 +1,321 @@
+rules_version = '2';
+
+// FLAVIUM Arena: who may read and write the shared festival.
+//
+// The app checks permissions too (auth/AccessControl.java), but the app can be modified.
+// These rules are what the server enforces, whatever the app does.
+//
+// Layout (see cloud/FirestoreRemoteStore.java):
+//   festivals/main              the festival: who uploaded it, "ready", the revision counter
+//   festivals/main/pub/{id}     rows everyone may read
+//   festivals/main/priv/{id}    rows only organisers may read
+//   festivals/main/links/{uid}  which account of the festival a signed-in person is
+//   festivals/main/sessions/{uid}  the device a person is signed in on
+//
+// A row document: t (table), k (key), v (columns), rev, del, br (branch), sp (sport),
+// dev (writing device), by (writer). Its id is "t:k". Rows are never deleted, only
+// marked as removed, so every device hears about a removal.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------- who is asking
+
+    function festival() {
+      return /databases/$(database)/documents/festivals/main;
+    }
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function linkPath() {
+      return /databases/$(database)/documents/festivals/main/links/$(request.auth.uid);
+    }
+
+    // The festival account of the signed-in person.
+    function myId() {
+      return get(linkPath()).data.userId;
+    }
+
+    function myRow() {
+      return get(/databases/$(database)/documents/festivals/main/priv/$('users:' + myId())).data;
+    }
+
+    // An organiser: signed in, linked to an account that exists and is active.
+    function organiser() {
+      return signedIn() && exists(linkPath()) && myRow().del == false && myRow().v.active == 1;
+    }
+
+    function role() {
+      return myRow().v.role;
+    }
+
+    // One session per account: a write must come from the device the account is
+    // signed in on. (The account itself sets that device, see "sessions" below.)
+    function onMyDevice(d) {
+      return get(/databases/$(database)/documents/festivals/main/sessions/$(request.auth.uid)).data.dev == d.dev;
+    }
+
+    // While the first device is uploading the festival, that device may write
+    // everything. Afterwards nobody has this freedom.
+    function uploading() {
+      return signedIn()
+        && get(festival()).data.ownerUid == request.auth.uid
+        && get(festival()).data.ready == false;
+    }
+
+    function setting(name) {
+      return get(/databases/$(database)/documents/festivals/main/pub/$('settings:' + name)).data.v.value;
+    }
+
+    function pubRow(id) {
+      return get(/databases/$(database)/documents/festivals/main/pub/$(id)).data;
+    }
+
+    // ---------------------------------------------------------------- the shape of a row
+
+    function isPrivateTable(t) {
+      return t in ['score_audit', 'event_audit', 'admin_audit', 'coach_sports'];
+    }
+
+    function isSplitTable(t) {
+      return t in ['registrations', 'users'];
+    }
+
+    function isPublicTable(t) {
+      return t in ['branches', 'sports', 'categories', 'matches', 'match_periods',
+                   'match_events', 'event_rounds', 'event_entries', 'event_attempts', 'settings'];
+    }
+
+    function wellFormed(id, d) {
+      return d.keys().hasAll(['t', 'k', 'v', 'rev', 'del', 'br', 'sp', 'dev', 'by'])
+        && id == d.t + ':' + d.k
+        && d.del is bool && d.v is map && d.rev is int
+        && d.by == request.auth.uid;
+    }
+
+    // The row takes the next revision, and the counter moves with it in the same
+    // transaction. A row can therefore never be stored with an old or invented number.
+    function nextRevision(d) {
+      return getAfter(festival()).data.rev == get(festival()).data.rev + 1
+        && d.rev == getAfter(festival()).data.rev;
+    }
+
+    // The branch written on a row must be the branch in the row.
+    function honestBranch(d) {
+      return d.del || !(d.t in ['registrations', 'users'])
+        || (d.v.branch_id == null && d.br == '') || d.v.branch_id == d.br;
+    }
+
+    // ---------------------------------------------------------------- Core
+
+    function coreMayManageRole(r) {
+      return r == 'ASOO_CORE' || (r == 'CAPTAIN' && setting('core_can_appoint_captains') == 1);
+    }
+
+    function coreWrite(d) {
+      return (d.t in ['sports', 'categories', 'registrations', 'match_periods', 'match_events',
+                      'score_audit', 'event_entries', 'event_attempts', 'event_audit'])
+        // Making a result official, or taking that back, only when Faculty allows it.
+        || (d.t in ['matches', 'event_rounds']
+            && (d.del
+                || (resource == null && d.v.is_final == 0)
+                || (resource != null && resource.data.del == false
+                    && d.v.is_final == resource.data.v.is_final)
+                || setting('core_can_finalise') == 1))
+        // The administrative log can be added to, never changed.
+        || (d.t == 'admin_audit' && resource == null && !d.del)
+        // Accounts: never Faculty, Core or Coach accounts.
+        || (d.t == 'users'
+            && (d.del || coreMayManageRole(d.v.role))
+            && (resource == null || resource.data.del || coreMayManageRole(resource.data.v.role)));
+    }
+
+    // ---------------------------------------------------------------- Coach
+
+    function coaches(sportId) {
+      return sportId != ''
+        && get(/databases/$(database)/documents/festivals/main/priv/$('coach_sports:' + myId() + '|' + sportId)).data.del == false;
+    }
+
+    // The sport written on a row must really be the sport of the row.
+    function honestSport(d) {
+      return (d.t == 'categories' && d.v.sport_id == d.sp)
+        || (d.t in ['registrations', 'matches', 'event_rounds']
+            && pubRow('categories:' + d.v.category_id).sp == d.sp)
+        || (d.t in ['match_periods', 'match_events', 'score_audit']
+            && pubRow('matches:' + d.v.match_id).sp == d.sp)
+        || (d.t in ['event_entries', 'event_audit']
+            && pubRow('event_rounds:' + d.v.round_id).sp == d.sp)
+        || (d.t == 'event_attempts' && pubRow('event_entries:' + d.v.entry_id).sp == d.sp);
+    }
+
+    function coachWrite(d) {
+      return d.t in ['categories', 'registrations', 'matches', 'match_periods', 'match_events',
+                     'score_audit', 'event_rounds', 'event_entries', 'event_attempts', 'event_audit']
+        && coaches(d.sp)
+        && (resource == null || resource.data.sp == d.sp)
+        && (d.del ? resource != null : honestSport(d));
+    }
+
+    // ---------------------------------------------------------------- Asoo Core
+
+    function assignedMatch(matchId) {
+      return pubRow('matches:' + matchId).v.assigned_to == myId()
+        && pubRow('matches:' + matchId).v.is_final == 0;
+    }
+
+    function assignedRound(roundId) {
+      return pubRow('event_rounds:' + roundId).v.assigned_to == myId()
+        && pubRow('event_rounds:' + roundId).v.is_final == 0;
+    }
+
+    function asooWrite(d) {
+      // The score and status of a fixture or event assigned to them, while it is not
+      // official. They cannot create, remove, reassign or make official.
+      return (d.t in ['matches', 'event_rounds'] && resource != null && !d.del
+              && resource.data.del == false
+              && resource.data.v.assigned_to == myId() && d.v.assigned_to == myId()
+              && resource.data.v.is_final == 0 && d.v.is_final == 0
+              && d.v.category_id == resource.data.v.category_id)
+        || (d.t in ['match_periods', 'match_events', 'score_audit']
+            && assignedMatch(d.del ? resource.data.v.match_id : d.v.match_id))
+        || (d.t == 'event_audit' && !d.del && resource == null && assignedRound(d.v.round_id))
+        || (d.t == 'event_entries' && resource != null && !d.del
+            && d.v.registration_id == resource.data.v.registration_id
+            && d.v.round_id == resource.data.v.round_id
+            && assignedRound(d.v.round_id))
+        || (d.t == 'event_attempts'
+            && assignedRound(pubRow('event_entries:'
+                + (d.del ? resource.data.v.entry_id : d.v.entry_id)).v.round_id));
+    }
+
+    // ---------------------------------------------------------------- Branch CR
+
+    function crWrite(d) {
+      // Registrations of their own branch: new ones start as PENDING; an approved one
+      // can only have its logo changed; a rejected one goes back to PENDING when edited.
+      return d.t == 'registrations' && d.br == myRow().v.branch_id
+        && ((resource == null && !d.del && d.v.status == 'PENDING')
+            || (resource != null && resource.data.br == d.br && resource.data.del == false
+                && ((d.del && resource.data.v.status != 'APPROVED')
+                    || (!d.del && resource.data.v.status != 'APPROVED' && d.v.status == 'PENDING')
+                    || (!d.del && resource.data.v.status == 'APPROVED'
+                        && d.v.diff(resource.data.v).affectedKeys().hasOnly(['logo_path'])))));
+    }
+
+    // ---------------------------------------------------------------- writing a row
+
+    function mayWrite(d) {
+      return organiser() && onMyDevice(d)
+        && (role() == 'FACULTY'
+            || (role() == 'CORE' && coreWrite(d))
+            || (role() == 'COACH' && coachWrite(d))
+            || (role() == 'ASOO_CORE' && asooWrite(d))
+            || (role() == 'CAPTAIN' && crWrite(d)));
+    }
+
+    // ---------------------------------------------------------------- reading private rows
+
+    function mayReadPrivate(r) {
+      return organiser()
+        && (role() == 'FACULTY'
+            || (role() == 'CORE'
+                && r.t in ['registrations', 'users', 'score_audit', 'event_audit', 'coach_sports'])
+            || (role() in ['ASOO_CORE', 'COACH']
+                && r.t in ['registrations', 'score_audit', 'event_audit', 'coach_sports'])
+            || (role() == 'CAPTAIN' && r.t == 'registrations' && r.br == myRow().v.branch_id));
+    }
+
+    // ================================================================ the documents
+
+    match /festivals/main {
+      allow read: if true;
+
+      // The first device reserves the empty server for itself.
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ready == false
+        && request.resource.data.rev == 0
+        && request.resource.data.owner is int;
+
+      allow update: if signedIn()
+        && request.resource.data.owner == resource.data.owner
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && (
+          // one step of the revision counter, together with a row (checked on the row)
+          (request.resource.data.rev == resource.data.rev + 1
+            && request.resource.data.ready == resource.data.ready
+            && (uploading() || organiser()))
+          // the uploading device declares the festival complete
+          || (resource.data.ownerUid == request.auth.uid
+            && resource.data.ready == false && request.resource.data.ready == true
+            && request.resource.data.rev == resource.data.rev)
+        );
+
+      allow delete: if false;
+
+      match /pub/{id} {
+        allow read: if true;
+
+        allow create, update: if signedIn()
+          && wellFormed(id, request.resource.data)
+          && nextRevision(request.resource.data)
+          && (
+            uploading()
+            // The public copy of a registration or account is written together with the
+            // complete row, and it is the complete row that is checked.
+            || (isSplitTable(request.resource.data.t)
+                && getAfter(/databases/$(database)/documents/festivals/main/priv/$(id)).data.rev
+                   == request.resource.data.rev)
+            || (isPublicTable(request.resource.data.t) && mayWrite(request.resource.data))
+          );
+
+        allow delete: if false;
+      }
+
+      match /priv/{id} {
+        // Asking for one row that does not exist tells an organiser only that: it does
+        // not exist. (The app asks before it creates a row.)
+        allow get: if signedIn()
+          && (uploading() || (resource == null ? organiser() : mayReadPrivate(resource.data)));
+        allow list: if signedIn() && (uploading() || mayReadPrivate(resource.data));
+
+        allow create, update: if signedIn()
+          && wellFormed(id, request.resource.data)
+          && nextRevision(request.resource.data)
+          && honestBranch(request.resource.data)
+          && (isPrivateTable(request.resource.data.t) || isSplitTable(request.resource.data.t))
+          && (uploading() || mayWrite(request.resource.data));
+
+        allow delete: if false;
+      }
+
+      match /links/{uid} {
+        // Which festival account a signed-in person is. Created by Faculty (or by a
+        // Core for the roles a Core may manage), and once by the uploading device.
+        allow read: if signedIn()
+          && (request.auth.uid == uid || (organiser() && role() in ['FACULTY', 'CORE']));
+
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasOnly(['userId'])
+          && request.resource.data.userId is string
+          && (
+            (uploading() && request.auth.uid == uid)
+            || (organiser() && role() == 'FACULTY')
+            || (organiser() && role() == 'CORE'
+                && coreMayManageRole(get(/databases/$(database)/documents/festivals/main/priv/$('users:' + request.resource.data.userId)).data.v.role))
+          );
+
+        allow delete: if organiser() && role() == 'FACULTY';
+      }
+
+      match /sessions/{uid} {
+        // The device an account is signed in on. Only the account itself may set it.
+        // This makes "one session per account" work across devices for the unmodified
+        // app; a modified app could set its own device back, so it is not tamper-proof.
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
+    }
+  }
+}

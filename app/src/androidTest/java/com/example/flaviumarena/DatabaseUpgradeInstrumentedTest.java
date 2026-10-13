@@ -211,6 +211,8 @@ public class DatabaseUpgradeInstrumentedTest {
         // Version 8 added the synchronisation bookkeeping, switched off and empty: an
         // installation that is not connected queues nothing.
         assertEquals(0, DatabaseUtils.queryNumEntries(db, "sync_outbox"));
+        // Version 9: the bookkeeping has the column that tells a complete row from a copy.
+        db.rawQuery("SELECT complete FROM sync_rows", null).close();
         assertEquals(0, DatabaseUtils.longForQuery(db,
                 "SELECT value FROM sync_state WHERE name = 'capture'", null));
 

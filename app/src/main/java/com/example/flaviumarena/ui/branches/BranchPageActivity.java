@@ -53,6 +53,12 @@ public class BranchPageActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         branch = repo.getBranch(branchId);
         if (branch == null) {
             finish();

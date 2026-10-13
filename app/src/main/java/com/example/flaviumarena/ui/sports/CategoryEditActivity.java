@@ -131,6 +131,12 @@ public class CategoryEditActivity extends BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshScreen();
+    }
+
+    /** Shows the current data. Runs when the screen opens and when shared data changes. */
+    @Override
+    protected void refreshScreen() {
         if (!AccessControl.canManageCategories(userIn(category == null ? null : category.sportId))) {
             toast("Only Faculty, Cores and the Coach of this sport can change categories.");
             finish();

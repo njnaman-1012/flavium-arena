@@ -2,6 +2,13 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+// The Firebase configuration file is not in the repository (it belongs to one Firebase
+// project). With the file present the app connects to that project; without it the app
+// still builds and works on its local database only.
+if (file("google-services.json").exists()) {
+    apply(plugin = libs.plugins.google.services.get().pluginId)
+}
+
 android {
     namespace = "com.example.flaviumarena"
     compileSdk {
@@ -36,6 +43,9 @@ dependencies {
     implementation(libs.activity.ktx)
     implementation(libs.appcompat)
     implementation(libs.material)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
     testImplementation(libs.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.ext.junit)

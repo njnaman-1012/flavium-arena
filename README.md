@@ -219,12 +219,13 @@ against a temporary database and lists each check.
 | Sport catalogue | `RulesTest`, `SportCatalogueInstrumentedTest`, `LiveLinkTest` |
 | Downloads | `CsvTest`, `ExportInstrumentedTest` |
 | Database upgrades | `DatabaseUpgradeInstrumentedTest` |
-| Sharing between devices | `SyncInstrumentedTest` (two databases, stand-in server) |
+| Sharing between devices | `SyncInstrumentedTest` (two databases, stand-in server), `PublicViewTest`, `FirestoreEmulatorInstrumentedTest` (Firebase Local Emulator Suite) |
 
 ## Sharing data between devices
 
-**Status: the logic is built and tested; no server is connected.** Until a Firebase
-project is configured, every installation still has its own data.
+**Status: built, and tested against the Firebase Local Emulator Suite. Not yet tested
+against the real Firebase project or between two real devices.** A device shares
+nothing until someone connects it from **More > Online sharing**.
 
 ### How it works
 
@@ -237,77 +238,134 @@ project is configured, every installation still has its own data.
   server's copy, and the person is told. An old copy can never overwrite newer data.
 - When a change to a match or event is refused, the history lines, sets, events and
   attempts written with it are dropped too, so the history always matches the score.
-- `RemoteStore` is the interface a server has to offer. The tests use an in-memory
-  stand-in; the online app needs a Cloud Firestore implementation of it.
+- `RemoteStore` is the interface a server has to offer. `cloud/FirestoreRemoteStore`
+  is the Cloud Firestore implementation; the tests also use an in-memory stand-in.
+- `cloud/Cloud` owns the connection: it synchronises when the app comes to the front
+  and after every local save, and listens for server changes while the app is open.
+  Every screen reloads itself through `refreshScreen()` when data arrives.
+
+### Data on the server
+
+Everything is under one document, `festivals/main`:
+
+| Path | Content | Who may read |
+|---|---|---|
+| `festivals/main` | owner, `ready`, revision counter | everyone |
+| `pub/{table:id}` | the public copy of a row | everyone, without signing in |
+| `priv/{table:id}` | the complete row where the public copy is reduced or absent | organisers, by role |
+| `links/{uid}` | which account a Firebase sign-in belongs to | that person, Faculty |
+| `sessions/{uid}` | the device an account is signed in on | that person |
 
 ### What is shared and what is not
 
 | Local table | Shared | Notes |
 |---|---|---|
 | `branches`, `sports`, `categories` | yes | public to read |
-| `registrations` | yes | phone numbers and pending or rejected entries are private |
+| `registrations` | yes | public only when approved, and without the phone number |
 | `matches`, `match_periods`, `match_events` | yes | public to read |
 | `event_rounds`, `event_entries`, `event_attempts` | yes | public to read |
 | `score_audit`, `event_audit` | yes | organisers only |
 | `settings`, `admin_audit` | yes | settings public; the log is for Faculty |
 | `coach_sports` | yes | organisers only |
-| `users` | profile only | name, email, role, active, branch. Never the password hash, salt or lockout counters |
-| `sessions` | no | a login session is decided by the server |
+| `users` | profile only | publicly name and role; the email is private. Never the password hash, salt or lockout counters |
+| `sessions` | no | a login session is decided on the server |
 | `sport_templates` | no | built into every installation |
 | standings, medals | not stored | each device works them out from the shared results |
 
 A row keeps its id on every device and on the server (the UUID it was created with), so
 the links between branches, registrations, fixtures and results are preserved.
 
+### Firebase setup
+
+1. Firebase Console: a project, with an Android app whose package name is
+   `com.example.flaviumarena`.
+2. Download `google-services.json` into `app/`. The file is ignored by git. Without it
+   the app still builds and simply has no online sharing.
+3. Authentication: enable the Email/Password provider and leave sign-up allowed (the
+   app creates the sign-in accounts).
+4. Firestore: create the database in production mode.
+5. Publish the rules and indexes in this repository. Nothing here costs money:
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase deploy --only firestore:rules,firestore:indexes --project <your-project-id>
+```
+
+Or paste `firestore.rules` into Firestore > Rules in the console, and create the two
+indexes of `firestore.indexes.json` under Firestore > Indexes.
+
+Until the rules are published, a production-mode database refuses everything and the
+app reports that the server refused the request.
+
 ### Connecting devices for the first time
 
 Two installations that were used separately each have their own festival, with their
 own ids. They are not merged row by row, because that would create duplicates.
 
-1. **One device uploads.** An administrator confirms on the device that holds the real
-   data, and `SyncEngine.uploadAsFestival()` sends everything. The server is reserved
-   for that device first, so a second device cannot upload as well. If the upload is
-   interrupted it continues where it stopped and sends nothing twice.
-2. **Every other device joins.** After the person confirms, `LocalBackup.copy()` keeps a
-   copy of the local database file in the app's `backups` folder, and
-   `SyncEngine.joinFestival()` replaces the shared tables with the server's data.
-   Joining is refused until the first upload is complete.
+1. **One device uploads** (More > Online sharing > Upload this device's festival).
+   Only a Faculty account can, and only while the server is empty. Faculty chooses the
+   password of their online account at this point. The server is reserved for that
+   device first, so a second device cannot upload as well. If the upload is interrupted
+   it continues where it stopped and sends nothing twice.
+2. **Faculty creates the online logins** of the other organisers in Accounts and roles
+   ("Create the online login"). New accounts get one automatically while connected.
+3. **Every other device joins** (Join the shared festival). After the person confirms,
+   a copy of the local database file is kept in the app's `backups` folder and the
+   shared tables are replaced with the server's data. Joining is refused until the
+   first upload is complete. Local data that was never uploaded is replaced, not
+   merged; it remains in the backup copy.
+4. Organisers then log in with their email and password. On a connected device the
+   login is checked by Firebase, not against a local password.
 
-Local data on a joining device that was never uploaded is replaced, not merged. It
-remains in the backup copy.
+### Sign-in and sessions
 
-### What still has to be built
+- The role comes from the account row on the server, never from the role chosen on the
+  login screen or from anything the device claims.
+- An account is signed in on one device. Logging in elsewhere offers "Sign out the
+  other device"; the other device is logged out when it next hears from the server.
+- A forgotten password is reset by email from Accounts and roles.
 
-1. A Firebase project and `app/google-services.json` (see below).
-2. `FirestoreRemoteStore`, the Firestore implementation of `RemoteStore`, with live
-   listeners that call `SyncEngine.applyRemote()`.
-3. Sign-in through Firebase Authentication, and accounts linked to it.
-4. Firestore Security Rules that enforce the permission table above on the server.
-5. A screen for the two steps above, a sync status line, and screens that reload when
-   `SyncEngine.Listener` reports a change.
-6. One session per account across devices.
+### Testing with the Firebase Local Emulator Suite
 
-### Firebase setup (to be done by the project owner)
+`FirestoreEmulatorInstrumentedTest` exercises the adapter and the security rules
+(allowed and refused access for every role). It is skipped when the emulators are not
+running. Java and Node.js are needed on the computer.
 
-1. In the Firebase Console create a project.
-2. Add an Android app with the package name `com.example.flaviumarena`.
-3. Download `google-services.json` into `app/`. The file is ignored by git.
-4. Authentication: enable the Email/Password provider.
-5. Firestore: create the database in production mode.
+```bash
+firebase emulators:start --only firestore,auth --project demo-flavium
+adb reverse tcp:8080 tcp:8080
+adb reverse tcp:9099 tcp:9099
+```
 
-### Billing
+Then run the device tests as described under Testing. To point a debug build of the
+app itself at the emulators, set `firebase_emulator_host` to `127.0.0.1` in
+`app/src/debug/res/values/config.xml`. Release builds ignore the setting.
 
-Everything above works on the free Spark plan except trusted server code. Two
-requirements need it: session records that a modified app cannot write itself, and
-Faculty creating sign-in accounts for other people. On Firebase that means Cloud
-Functions, which require the pay-as-you-go Blaze plan. Without it, sessions can be
-enforced with Firestore transactions and rules, which stops honest clients but is not
-tamper-proof. Nothing that needs billing has been enabled or deployed.
+### Billing and limits
+
+Everything runs on the free Spark plan. No Cloud Functions are used and nothing that
+needs billing has been enabled or deployed. That has consequences:
+
+- The one-device session is a document the app writes itself, checked by the rules.
+  It stops the normal app; it is not tamper-proof against a modified app.
+- Online logins are created from the Faculty device through Firebase sign-up, so
+  sign-up has to stay enabled. The rules give a sign-in no access until Faculty has
+  linked it to an account.
+- Faculty cannot set someone else's password; resets go by email.
+- At the Firestore level a Coach can read every registration, like Asoo Core. What a
+  Coach can change is limited to the assigned sports.
+- A device that was signed in as an organiser keeps the private rows it received after
+  logging out. The app hides them, but they are in its database file.
+- The first device to upload claims the empty server. Do the upload yourself before
+  handing the app to anyone.
+- Synchronisation runs while the app is open. Nothing is sent in the background.
+- When a change arrives the open screen reloads, which can clear a form being typed.
 
 ## Not built yet
 
-- **The connection to a server.** See "Sharing data between devices" above: the
-  logic is tested with two databases and a stand-in server, but nothing is online.
+- **A test between real devices on the real Firebase project.** The sharing code has
+  only been run against the local emulators.
 - Automatic creation of the next knockout round. The knockout view only shows who
   went through.
 - Net run rate in cricket tables.

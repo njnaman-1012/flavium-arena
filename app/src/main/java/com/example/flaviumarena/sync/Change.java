@@ -16,6 +16,15 @@ public class Change {
     public final Map<String, Object> values;
     /** The server's revision of this row. 0 on a change that has not reached the server. */
     public long rev;
+    /**
+     * False for the reduced copy the public gets of a registration or an account (see
+     * PublicView). A device that holds the complete row never replaces it with a copy.
+     */
+    public boolean complete = true;
+    /** The branch the row belongs to, or "". The server's rules use it for a Branch CR. */
+    public String branch = "";
+    /** The sport the row belongs to, or "". The server's rules use it for a Coach. */
+    public String sport = "";
 
     public Change(String table, String key, boolean deleted, Map<String, Object> values) {
         this.table = table;
