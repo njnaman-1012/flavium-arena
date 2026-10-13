@@ -27,13 +27,18 @@ import com.example.flaviumarena.model.Role;
 import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.User;
 import com.example.flaviumarena.sync.Change;
+import com.example.flaviumarena.sync.PublicView;
 import com.example.flaviumarena.sync.RemoteStore;
 import com.example.flaviumarena.sync.SyncEngine;
+import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreException;
 import com.google.firebase.firestore.ListenerRegistration;
 
 import org.junit.After;
@@ -49,7 +54,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -149,7 +156,13 @@ public class FirestoreEmulatorInstrumentedTest {
         d.scope = new FirestoreRemoteStore.Scope();
         d.scope.uid = d.uid;
         d.store.setScope(d.scope);
-        // Being signed in on this device is what "one session per account" checks.
+    }
+
+    /**
+     * Being signed in on this device is what "one session per account" checks. The
+     * server accepts it only from an account of the festival, so it follows the link.
+     */
+    private void openSession(Device d) throws Exception {
         Map<String, Object> session = new HashMap<>();
         session.put("dev", d.sync.deviceId());
         Tasks.await(d.firestore.document("festivals/main/sessions/" + d.uid).set(session));
@@ -162,6 +175,7 @@ public class FirestoreEmulatorInstrumentedTest {
         Tasks.await(a.firestore.document("festivals/main/links/" + d.uid).set(link));
         d.scope.role = role;
         d.scope.branchId = branchId;
+        openSession(d);
     }
 
     private String userId(String email) {
@@ -192,6 +206,7 @@ public class FirestoreEmulatorInstrumentedTest {
         Map<String, Object> link = new HashMap<>();
         link.put("userId", facultyA.id);
         Tasks.await(a.firestore.document("festivals/main/links/" + a.uid).set(link));
+        openSession(a);
         a.sync.uploadAsFestival();
 
         for (Sport s : a.repo.getSports()) {
@@ -507,14 +522,14 @@ public class FirestoreEmulatorInstrumentedTest {
                 PASSWORD, Role.COACH, null);
         a.repo.setCoachSports(facultyA, coachId, Arrays.asList(football));
         assertTrue(a.sync.sync());
-        final Device coach = join("device-coach", "coach@flavium.test", Role.COACH, null);
+        final Device coach = joinAsCoach(football);
 
         // A fixture of their sport.
         Match own = liveMatch(a);
         Change ok = edited("matches", own.id, "venue", "Ground 2");
         accepted(coach, ok);
         // A Coach makes results of their sport official, like Faculty.
-        Change official = edited("matches", own.id, "venue", "Ground 3");
+        Change official = edited("matches", own.id, "is_final", 1L);
         accepted(coach, official);
 
         // A fixture of another sport.
@@ -614,5 +629,546 @@ public class FirestoreEmulatorInstrumentedTest {
         assertNull("Nothing of the second device is on the server",
                 a.store.get("sports", second.repo.getSports().get(0).id));
         assertEquals(0, second.sync.pendingCount());
+    }
+
+    // =====================================================================
+    // Writing to the server directly, the way a modified app could
+    // =====================================================================
+
+    /** A row document as the adapter writes it. The revision is filled in when it is sent. */
+    private Map<String, Object> document(Device d, Change change) {
+        Map<String, Object> document = new HashMap<>();
+        document.put("t", change.table);
+        document.put("k", change.key);
+        document.put("rev", 0L);
+        document.put("del", change.deleted);
+        document.put("v", new HashMap<>(change.values));
+        document.put("br", change.branch);
+        document.put("sp", change.sport);
+        document.put("dev", d.sync.deviceId());
+        document.put("by", d.uid);
+        return document;
+    }
+
+    /**
+     * Writes documents exactly as given, in one transaction, without the adapter. The
+     * counter moves by one and names "last" (null: the counter is left alone). Paths
+     * are below festivals/main and alternate with their documents.
+     */
+    @SuppressWarnings("unchecked")
+    private Task<Void> rawWrite(final Device d, final String last, final boolean lastPriv,
+                                final Object... pathsAndDocuments) {
+        final DocumentReference meta = d.firestore.document("festivals/main");
+        return d.firestore.runTransaction(transaction -> {
+            long rev = transaction.get(meta).getLong("rev") + 1;
+            if (last != null) {
+                transaction.update(meta, "rev", rev, "last", last, "lastPriv", lastPriv);
+            }
+            for (int i = 0; i < pathsAndDocuments.length; i += 2) {
+                Map<String, Object> document =
+                        new HashMap<>((Map<String, Object>) pathsAndDocuments[i + 1]);
+                document.put("rev", rev);
+                transaction.set(d.firestore.document("festivals/main/" + pathsAndDocuments[i]),
+                        document);
+            }
+            return null;
+        });
+    }
+
+    /** The server must refuse this, and for the right reason: its rules, not a mistake here. */
+    private void denied(String what, Task<?> task) throws Exception {
+        try {
+            Tasks.await(task);
+            fail("The server allowed: " + what);
+        } catch (ExecutionException e) {
+            assertTrue(what + ": " + e.getCause(), e.getCause() instanceof FirebaseFirestoreException);
+            assertEquals(what, FirebaseFirestoreException.Code.PERMISSION_DENIED,
+                    ((FirebaseFirestoreException) e.getCause()).getCode());
+        }
+    }
+
+    private DocumentSnapshot read(String path) throws Exception {
+        return Tasks.await(a.firestore.document("festivals/main/" + path).get());
+    }
+
+    /** The first value the question finds on device A, or null when it finds nothing. */
+    private String one(String sql, String... args) {
+        try {
+            return DatabaseUtils.stringForQuery(a.helper.getReadableDatabase(), sql, args);
+        } catch (android.database.sqlite.SQLiteDoneException nothing) {
+            return null;
+        }
+    }
+
+    /** A Coach of one sport, on a device of their own that asks for that sport's rows. */
+    private Device joinAsCoach(String sportId) throws Exception {
+        String coachId = userId("coach@flavium.test");
+        if (coachId == null || coachId.isEmpty()) {
+            throw new IllegalStateException("Create the coach account first");
+        }
+        Device coach = device("device-coach", false);
+        signUp(coach, "coach@flavium.test");
+        link(coach, coachId, Role.COACH, null);
+        coach.scope.sportIds = new ArrayList<>(Arrays.asList(sportId));
+        coach.sync.joinFestival();
+        return coach;
+    }
+
+    // ----- Public copies -----
+
+    @Test
+    public void thePublicCopyOfARegistrationCannotBeForgedOrLeftOut() throws Exception {
+        User crOnA = a.repo.getUser(userId(DevData.CAPTAIN_EMAIL));
+        Device cr = join("device-cr", DevData.CAPTAIN_EMAIL, Role.CAPTAIN, crOnA.branchId);
+        String pendingId = one("SELECT id FROM registrations WHERE branch_id = ? "
+                + "AND status = 'PENDING'", crOnA.branchId);
+        String id = "registrations:" + pendingId;
+
+        // The honest pair, written by hand, is accepted: so the refusals below are
+        // about the content and not about how this test writes.
+        Change honest = edited("registrations", pendingId, "contact_name", "Honest");
+        Tasks.await(rawWrite(cr, id, true, "priv/" + id, document(cr, honest),
+                "pub/" + id, document(cr, PublicView.of(honest))));
+
+        // While it waits, the public learns nothing about it.
+        DocumentSnapshot hidden = read("pub/" + id);
+        assertEquals(Boolean.TRUE, hidden.getBoolean("del"));
+        assertTrue(((Map<?, ?>) hidden.get("v")).isEmpty());
+        assertEquals("", hidden.getString("br"));
+        assertEquals("", hidden.getString("sp"));
+
+        // A Branch CR announcing their waiting team to the public as approved.
+        Change again = edited("registrations", pendingId, "contact_name", "Again");
+        Change fake = new Change("registrations", pendingId, false,
+                new LinkedHashMap<>(again.values));
+        fake.values.put("status", "APPROVED");
+        fake.values.put("contact_phone", "");
+        fake.branch = again.branch;
+        fake.sport = again.sport;
+        denied("a public copy that says APPROVED", rawWrite(cr, id, true,
+                "priv/" + id, document(cr, again), "pub/" + id, document(cr, fake)));
+        // The complete row without its public copy, and the public copy on its own.
+        denied("a registration without its public copy", rawWrite(cr, id, true,
+                "priv/" + id, document(cr, again)));
+        denied("a public copy on its own", rawWrite(cr, id, false,
+                "pub/" + id, document(cr, fake)));
+        Change named = new Change("registrations", pendingId, true, null);
+        named.branch = again.branch;
+        denied("a hidden copy that still names the branch", rawWrite(cr, id, true,
+                "priv/" + id, document(cr, again), "pub/" + id, document(cr, named)));
+
+        // Not even Faculty can publish a phone number or a different team.
+        String approvedId = one("SELECT id FROM registrations WHERE status = 'APPROVED' "
+                + "AND contact_phone <> '' LIMIT 1");
+        String approved = "registrations:" + approvedId;
+        Change team = edited("registrations", approvedId, "contact_name", "Named");
+        denied("a public copy with the phone number", rawWrite(a, approved, true,
+                "priv/" + approved, document(a, team), "pub/" + approved, document(a, team)));
+        Change other = PublicView.of(team);
+        other.values.put("members", "Somebody Else");
+        denied("a public copy that differs from the registration", rawWrite(a, approved, true,
+                "priv/" + approved, document(a, team), "pub/" + approved, document(a, other)));
+        Tasks.await(rawWrite(a, approved, true, "priv/" + approved, document(a, team),
+                "pub/" + approved, document(a, PublicView.of(team))));
+        assertEquals("", read("pub/" + approved).get("v.contact_phone"));
+        assertEquals("Named", read("pub/" + approved).get("v.contact_name"));
+    }
+
+    @Test
+    public void anAccountNeverCarriesAPasswordAndItsPublicCopyNeverTheEmail() throws Exception {
+        String asooId = userId(DevData.ASOO_EMAIL);
+        String id = "users:" + asooId;
+        Change honest = edited("users", asooId, "name", "Renamed Asoo");
+        Tasks.await(rawWrite(a, id, true, "priv/" + id, document(a, honest),
+                "pub/" + id, document(a, PublicView.of(honest))));
+        assertEquals(asooId + "@hidden.invalid", read("pub/" + id).get("v.email"));
+
+        for (String secret : new String[]{"password_hash", "salt", "failed_logins"}) {
+            Change withSecret = edited("users", asooId, secret, "x");
+            denied("an account with " + secret, rawWrite(a, id, true,
+                    "priv/" + id, document(a, withSecret),
+                    "pub/" + id, document(a, PublicView.of(withSecret))));
+        }
+        Change renamed = edited("users", asooId, "name", "Again");
+        denied("a public account with the real email", rawWrite(a, id, true,
+                "priv/" + id, document(a, renamed), "pub/" + id, document(a, renamed)));
+        Change lie = PublicView.of(renamed);
+        lie.values.put("role", Role.FACULTY);
+        denied("a public account with another role", rawWrite(a, id, true,
+                "priv/" + id, document(a, renamed), "pub/" + id, document(a, lie)));
+        Change noRole = edited("users", asooId, "role", "SUPERUSER");
+        denied("an account with an invented role", rawWrite(a, id, true,
+                "priv/" + id, document(a, noRole), "pub/" + id,
+                document(a, PublicView.of(noRole))));
+        // Nothing of all that is on the server.
+        assertEquals(Role.ASOO_CORE, read("priv/" + id).get("v.role"));
+        assertNull(read("priv/" + id).get("v.password_hash"));
+    }
+
+    // ----- Rows, keys and the counter -----
+
+    @Test
+    public void aRowCannotPretendToBeAnotherRowAndTheCounterMovesOnlyWithARow() throws Exception {
+        Match live = liveMatch(a);
+        String id = "matches:" + live.id;
+        String otherId = one("SELECT id FROM matches WHERE id <> ? LIMIT 1", live.id);
+
+        Change honest = edited("matches", live.id, "venue", "Ground 8");
+        Tasks.await(rawWrite(a, id, false, "pub/" + id, document(a, honest)));
+
+        // The columns name a different fixture than the document does.
+        Change wrongKey = edited("matches", live.id, "id", otherId);
+        denied("a row whose columns name another row", rawWrite(a, id, false,
+                "pub/" + id, document(a, wrongKey)));
+        // Extra fields, a wrong writer, a table in the wrong place.
+        Map<String, Object> extra = document(a, edited("matches", live.id, "venue", "X"));
+        extra.put("admin", true);
+        denied("a row with an extra field", rawWrite(a, id, false, "pub/" + id, extra));
+        Map<String, Object> wrongWriter = document(a, edited("matches", live.id, "venue", "X"));
+        wrongWriter.put("by", "somebody-else");
+        denied("a row signed by somebody else", rawWrite(a, id, false, "pub/" + id, wrongWriter));
+        Map<String, Object> history = document(a, edited("matches", live.id, "venue", "X"));
+        history.put("t", "score_audit");
+        denied("a private table in the public place", rawWrite(a, "score_audit:" + live.id,
+                false, "pub/score_audit:" + live.id, history));
+        // A sport of its own choosing.
+        Map<String, Object> wrongSport = document(a, edited("matches", live.id, "venue", "X"));
+        wrongSport.put("sp", singles.sportId);
+        denied("a fixture filed under another sport", rawWrite(a, id, false,
+                "pub/" + id, wrongSport));
+
+        // The counter on its own, or naming a row that is not written with it.
+        denied("the counter without a row", rawWrite(a, id, false));
+        denied("the counter naming a row that does not exist", rawWrite(a, "matches:nothing",
+                false));
+        denied("a row without the counter", rawWrite(a, null, false,
+                "pub/" + id, document(a, edited("matches", live.id, "venue", "X"))));
+        denied("the festival handed to somebody else", a.firestore.document("festivals/main")
+                .update("ownerUid", "somebody-else"));
+        denied("the festival made unready again", a.firestore.document("festivals/main")
+                .update("ready", false));
+        assertEquals("Ground 8", a.store.get("matches", live.id).values.get("venue"));
+    }
+
+    @Test
+    public void aRemovedRowKeepsNothingButItsMarkerAndEveryDeviceHearsOfIt() throws Exception {
+        Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        Match live = liveMatch(a);
+        String id = "matches:" + live.id;
+        long histories = count(a, "score_audit", "match_id = '" + live.id + "'");
+
+        // A "removed" marker that still carries the content, or changes whose row it was.
+        Map<String, Object> keeps = document(a, edited("matches", live.id, "venue", "X"));
+        keeps.put("del", true);
+        denied("a removal that keeps the content", rawWrite(a, id, false, "pub/" + id, keeps));
+        Map<String, Object> moved = document(a, new Change("matches", live.id, true, null));
+        moved.put("sp", singles.sportId);
+        denied("a removal that changes the sport", rawWrite(a, id, false, "pub/" + id, moved));
+        denied("a removal of a row that never existed", rawWrite(a, "matches:nothing", false,
+                "pub/matches:nothing", document(a, new Change("matches", "nothing", true, null))));
+
+        // The real thing: Faculty removes the fixture in the app.
+        a.repo.deleteFixture(facultyA, live.id);
+        assertTrue(a.sync.sync());
+        assertTrue(String.valueOf(a.sync.takeNotices()), a.sync.takeNotices().isEmpty());
+        assertEquals(0, a.sync.pendingCount());
+        DocumentSnapshot marker = read("pub/" + id);
+        assertEquals(Boolean.TRUE, marker.getBoolean("del"));
+        assertTrue(((Map<?, ?>) marker.get("v")).isEmpty());
+        assertEquals(sevens.sportId, marker.getString("sp"));
+
+        core.sync.pull();
+        assertEquals(0, count(core, "matches", "id = '" + live.id + "'"));
+        if (histories > 0) {
+            assertEquals(0, count(core, "score_audit", "match_id = '" + live.id + "'"));
+        }
+        Device visitor = device("device-public", false);
+        visitor.sync.joinFestival();
+        assertEquals(0, count(visitor, "matches", "id = '" + live.id + "'"));
+        assertEquals(count(a, "matches", null), count(visitor, "matches", null));
+
+        // Something added and removed again before it was ever sent is nobody's business.
+        ContentValues branch = new ContentValues();
+        branch.put("id", "temporary-branch");
+        branch.put("name", "Temporary");
+        a.helper.getWritableDatabase().insertOrThrow("branches", null, branch);
+        a.helper.getWritableDatabase().delete("branches", "id = 'temporary-branch'", null);
+        assertTrue(a.sync.sync());
+        assertTrue(a.sync.takeNotices().isEmpty());
+        assertEquals(0, a.sync.pendingCount());
+        assertNull(a.store.get("branches", "temporary-branch"));
+    }
+
+    // ----- Accounts, links and sessions -----
+
+    @Test
+    public void nobodyCanGiveThemselvesOrOthersARoleThroughTheLinks() throws Exception {
+        Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        String coreId = userId(DevData.CORE_EMAIL);
+        String asooId = userId(DevData.ASOO_EMAIL);
+        Map<String, Object> toAsoo = new HashMap<>();
+        toAsoo.put("userId", asooId);
+        Map<String, Object> toCore = new HashMap<>();
+        toCore.put("userId", coreId);
+        Map<String, Object> toFaculty = new HashMap<>();
+        toFaculty.put("userId", facultyA.id);
+
+        // A Core re-pointing Faculty's sign-in (which would lock Faculty out), or their own.
+        denied("a Core changing Faculty's link", core.firestore
+                .document("festivals/main/links/" + a.uid).set(toAsoo));
+        denied("a Core linking themselves to Faculty", core.firestore
+                .document("festivals/main/links/" + core.uid).set(toFaculty));
+        denied("a Core changing their own link", core.firestore
+                .document("festivals/main/links/" + core.uid).set(toAsoo));
+
+        // A new sign-in: a Core may make it an Asoo Core, nothing higher.
+        Device fresh = device("device-stranger", false);
+        signUp(fresh, "fresh@flavium.test");
+        denied("a session before being an account", fresh.firestore
+                .document("festivals/main/sessions/" + fresh.uid)
+                .set(new HashMap<String, Object>() {
+                    {
+                        put("dev", 5L);
+                    }
+                }));
+        denied("a Core making a Core", core.firestore
+                .document("festivals/main/links/" + fresh.uid).set(toCore));
+        denied("a Core making a Faculty", core.firestore
+                .document("festivals/main/links/" + fresh.uid).set(toFaculty));
+        denied("a new sign-in linking itself", fresh.firestore
+                .document("festivals/main/links/" + fresh.uid).set(toAsoo));
+        Map<String, Object> padded = new HashMap<>(toAsoo);
+        padded.put("role", Role.FACULTY);
+        denied("a link with extra fields", a.firestore
+                .document("festivals/main/links/" + fresh.uid).set(padded));
+        Map<String, Object> toNobody = new HashMap<>();
+        toNobody.put("userId", "no-such-account");
+        denied("a link to an account that does not exist", a.firestore
+                .document("festivals/main/links/" + fresh.uid).set(toNobody));
+        Tasks.await(core.firestore.document("festivals/main/links/" + fresh.uid).set(toAsoo));
+
+        // Once linked, the Core cannot move it up either.
+        denied("a Core promoting a link", core.firestore
+                .document("festivals/main/links/" + fresh.uid).set(toCore));
+        // And a link is not removed by anyone but Faculty.
+        denied("a Core removing a link", core.firestore
+                .document("festivals/main/links/" + fresh.uid).delete());
+
+        // The session: only one's own, only a device number.
+        fresh.scope.role = Role.ASOO_CORE;
+        openSession(fresh);
+        denied("somebody else's session", core.firestore
+                .document("festivals/main/sessions/" + fresh.uid)
+                .set(new HashMap<String, Object>() {
+                    {
+                        put("dev", 5L);
+                    }
+                }));
+        denied("reading somebody else's session", core.firestore
+                .document("festivals/main/sessions/" + fresh.uid).get());
+        denied("a session that is not a device number", fresh.firestore
+                .document("festivals/main/sessions/" + fresh.uid)
+                .set(new HashMap<String, Object>() {
+                    {
+                        put("dev", "every device");
+                    }
+                }));
+
+        // The new Asoo Core is exactly that: no accounts, no settings.
+        final Change account = edited("users", asooId, "role", Role.FACULTY);
+        refused(() -> fresh.store.push(account, account.rev));
+        // A Core cannot bring back or take over a removed account, or touch a Coach.
+        String coachId = a.repo.createUser(facultyA, "Football Coach", "coach@flavium.test",
+                PASSWORD, Role.COACH, null);
+        assertTrue(a.sync.sync());
+        final Change coach = edited("users", coachId, "name", "Mine");
+        refused(() -> core.store.push(coach, coach.rev));
+        final Change demote = edited("users", coachId, "role", Role.ASOO_CORE);
+        refused(() -> core.store.push(demote, demote.rev));
+    }
+
+    // ----- Score history -----
+
+    @Test
+    public void aScoreHistoryCanBeAddedToButNotChangedForgedOrRemoved() throws Exception {
+        final Device asoo = join("device-asoo", DevData.ASOO_EMAIL, Role.ASOO_CORE, null);
+        String asooId = userId(DevData.ASOO_EMAIL);
+        Match assigned = liveMatch(a);
+        a.repo.updateScore(facultyA, assigned.id, assigned.version, 1, 0, "", Match.STATUS_LIVE);
+        assertTrue(a.sync.sync());
+        String lineId = one("SELECT id FROM score_audit WHERE match_id = ? LIMIT 1", assigned.id);
+
+        // Changing a line: not the scorer, and not Faculty either.
+        final Change tamper = edited("score_audit", lineId, "new_score", "9 - 9");
+        refused(() -> asoo.store.push(tamper, tamper.rev));
+        final Change tamperByFaculty = edited("score_audit", lineId, "new_score", "9 - 9");
+        refused(() -> a.store.push(tamperByFaculty, tamperByFaculty.rev));
+        // Removing a line: not the scorer.
+        final long rev = a.store.get("score_audit", lineId).rev;
+        refused(() -> asoo.store.push(new Change("score_audit", lineId, true, null), rev));
+
+        // A new line in somebody else's name.
+        Map<String, Object> values = new LinkedHashMap<>(a.store.get("score_audit", lineId).values);
+        String forgedId = UUID.randomUUID().toString();
+        values.put("id", forgedId);
+        values.put("changed_by", facultyA.id);
+        final Change forged = new Change("score_audit", forgedId, false, values);
+        forged.sport = sevens.sportId;
+        refused(() -> asoo.store.push(forged, 0));
+        // A line for a fixture that is not theirs.
+        String notMine = one("SELECT id FROM matches WHERE assigned_to IS NULL LIMIT 1");
+        Map<String, Object> elsewhere = new LinkedHashMap<>(values);
+        String elsewhereId = UUID.randomUUID().toString();
+        elsewhere.put("id", elsewhereId);
+        elsewhere.put("changed_by", asooId);
+        elsewhere.put("match_id", notMine);
+        final Change wrongMatch = new Change("score_audit", elsewhereId, false, elsewhere);
+        wrongMatch.sport = a.store.get("matches", notMine).sport;
+        refused(() -> asoo.store.push(wrongMatch, 0));
+
+        // Their own line for their own fixture is what the app writes.
+        Map<String, Object> mine = new LinkedHashMap<>(values);
+        String mineId = UUID.randomUUID().toString();
+        mine.put("id", mineId);
+        mine.put("changed_by", asooId);
+        Change own = new Change("score_audit", mineId, false, mine);
+        own.sport = sevens.sportId;
+        assertTrue(asoo.store.push(own, 0) > 0);
+
+        // The administrative log: nobody removes or rewrites a line, Faculty included.
+        String logId = one("SELECT id FROM admin_audit LIMIT 1");
+        assertNotNull("The sample data has an administrative log", logId);
+        final long logRev = a.store.get("admin_audit", logId).rev;
+        refused(() -> a.store.push(new Change("admin_audit", logId, true, null), logRev));
+        final Change rewrite = edited("admin_audit", logId, "detail", "nothing happened");
+        refused(() -> a.store.push(rewrite, rewrite.rev));
+        assertFalse("9 - 9".equals(a.store.get("score_audit", lineId).values.get("new_score")));
+    }
+
+    @Test
+    public void anAsooCoreChangesTheScoreAndNothingElseAboutAFixture() throws Exception {
+        final Device asoo = join("device-asoo", DevData.ASOO_EMAIL, Role.ASOO_CORE, null);
+        Match assigned = liveMatch(a);
+
+        final Change venue = edited("matches", assigned.id, "venue", "My garden");
+        refused(() -> asoo.store.push(venue, venue.rev));
+        final Change date = edited("matches", assigned.id, "match_date", "2030-01-01");
+        refused(() -> asoo.store.push(date, date.rev));
+        final Change link = edited("matches", assigned.id, "external_url", "https://example.org");
+        refused(() -> asoo.store.push(link, link.rev));
+        // Removing the fixture, or a set of it.
+        final long rev = a.store.get("matches", assigned.id).rev;
+        refused(() -> asoo.store.push(new Change("matches", assigned.id, true, null), rev));
+
+        // Taking a set away from somebody else's fixture by moving it to their own.
+        String otherSet = one("SELECT p.id FROM match_periods p WHERE p.match_id <> ? LIMIT 1",
+                assigned.id);
+        if (otherSet != null) {
+            final Change move = edited("match_periods", otherSet, "match_id", assigned.id);
+            move.sport = sevens.sportId;
+            refused(() -> asoo.store.push(move, move.rev));
+            final long setRev = a.store.get("match_periods", otherSet).rev;
+            refused(() -> asoo.store.push(new Change("match_periods", otherSet, true, null),
+                    setRev));
+        }
+
+        // The score, the note and the status are theirs.
+        Change score = edited("matches", assigned.id, "score_a", 2L, "score_b", 1L,
+                "score_note", "after extra time", "version", (long) assigned.version + 1);
+        accepted(asoo, score);
+    }
+
+    // ----- Official results and the Core -----
+
+    @Test
+    public void aCoreLeavesOfficialResultsAloneUnlessFacultyAllowsIt() throws Exception {
+        final Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        Match live = liveMatch(a);
+        String open = one("SELECT id FROM matches WHERE is_final = 0 AND id <> ? LIMIT 1", live.id);
+
+        // Faculty makes one result official and withdraws the permission.
+        accepted(a, edited("matches", live.id, "is_final", 1L));
+        accepted(a, edited("settings", "core_can_finalise", "value", 0L));
+
+        final Change correct = edited("matches", live.id, "score_a", 9L);
+        refused(() -> core.store.push(correct, correct.rev));
+        final Change reopen = edited("matches", live.id, "is_final", 0L);
+        refused(() -> core.store.push(reopen, reopen.rev));
+        final Change finalise = edited("matches", open, "is_final", 1L);
+        refused(() -> core.store.push(finalise, finalise.rev));
+        // The sets of an official result are part of that result.
+        String set = one("SELECT id FROM match_periods LIMIT 1");
+        assertNotNull("The sample data has a match played in sets", set);
+        String setMatch = one("SELECT match_id FROM match_periods WHERE id = ?", set);
+        accepted(core, edited("match_periods", set, "score_a", 20L));
+        accepted(a, edited("matches", setMatch, "is_final", 1L));
+        final Change setScore = edited("match_periods", set, "score_a", 30L);
+        refused(() -> core.store.push(setScore, setScore.rev));
+        // What stays possible: the venue of the official one, anything of an open one.
+        accepted(core, edited("matches", live.id, "venue", "Ground 9"));
+        accepted(core, edited("matches", open, "score_a", 1L, "score_b", 1L));
+
+        // With the permission back, a Core corrects and finalises.
+        accepted(a, edited("settings", "core_can_finalise", "value", 1L));
+        accepted(core, edited("matches", live.id, "score_a", 9L));
+        accepted(core, edited("matches", open, "is_final", 1L));
+    }
+
+    // ----- A Coach reads the assigned sports only -----
+
+    @Test
+    public void aCoachReceivesPrivateRowsOfTheirOwnSportsOnly() throws Exception {
+        String football = sevens.sportId;
+        String other = singles.sportId;
+        String coachId = a.repo.createUser(facultyA, "Football Coach", "coach@flavium.test",
+                PASSWORD, Role.COACH, null);
+        a.repo.setCoachSports(facultyA, coachId, Arrays.asList(football));
+        assertTrue(a.sync.sync());
+        final Device coach = joinAsCoach(football);
+
+        String inFootball = "category_id IN (SELECT id FROM categories WHERE sport_id = '"
+                + football + "')";
+        String inOther = "category_id IN (SELECT id FROM categories WHERE sport_id = '"
+                + other + "')";
+        String secret = "(status <> 'APPROVED' OR contact_phone <> '')";
+        assertTrue("The sample data has private registrations in both sports",
+                count(a, "registrations", inFootball + " AND " + secret) > 0
+                        && count(a, "registrations", inOther + " AND " + secret) > 0);
+        assertEquals(count(a, "registrations", inFootball),
+                count(coach, "registrations", inFootball));
+        assertEquals(count(a, "registrations", inFootball + " AND " + secret),
+                count(coach, "registrations", inFootball + " AND " + secret));
+        assertEquals("Of other sports only what the public sees", 0,
+                count(coach, "registrations", "NOT " + inFootball + " AND " + secret));
+        String ofFootball = "match_id IN (SELECT m.id FROM matches m JOIN categories c "
+                + "ON c.id = m.category_id WHERE c.sport_id = '" + football + "')";
+        assertEquals(count(a, "score_audit", ofFootball), count(coach, "score_audit", ofFootball));
+        assertEquals(0, count(coach, "score_audit", "NOT " + ofFootball));
+        assertEquals(0, count(coach, "users", "email LIKE '%@flavium.test'"));
+
+        // Asking for more than that is refused, however the question is put.
+        coach.scope.sportIds = new ArrayList<>(Arrays.asList(football, other));
+        refused(() -> coach.store.changesSince(0));
+        coach.scope.sportIds = new ArrayList<>(Arrays.asList(football));
+        coach.scope.role = Role.ASOO_CORE;
+        refused(() -> coach.store.changesSince(0));
+        coach.scope.role = Role.COACH;
+        String otherPrivate = one("SELECT id FROM registrations WHERE " + inOther
+                + " AND " + secret + " LIMIT 1");
+        refused(() -> coach.store.get("registrations", otherPrivate));
+        assertNotNull(coach.store.get("registrations", one("SELECT id FROM registrations WHERE "
+                + inFootball + " AND " + secret + " LIMIT 1")));
+
+        // When Faculty assigns the other sport too, its rows can be asked for.
+        a.repo.setCoachSports(facultyA, coachId, Arrays.asList(football, other));
+        assertTrue(a.sync.sync());
+        coach.scope.sportIds = new ArrayList<>(Arrays.asList(football, other));
+        coach.sync.reloadAll();
+        assertEquals(count(a, "registrations", inOther + " AND " + secret),
+                count(coach, "registrations", inOther + " AND " + secret));
+        // And when it is taken away again, they cannot.
+        a.repo.setCoachSports(facultyA, coachId, Arrays.asList(football));
+        assertTrue(a.sync.sync());
+        refused(() -> coach.store.changesSince(0));
     }
 }

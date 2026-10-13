@@ -250,7 +250,7 @@ Everything is under one document, `festivals/main`:
 
 | Path | Content | Who may read |
 |---|---|---|
-| `festivals/main` | owner, `ready`, revision counter | everyone |
+| `festivals/main` | owner, `ready`, revision counter, the row it last moved for | everyone |
 | `pub/{table:id}` | the public copy of a row | everyone, without signing in |
 | `priv/{table:id}` | the complete row where the public copy is reduced or absent | organisers, by role |
 | `links/{uid}` | which account a Firebase sign-in belongs to | that person, Faculty |
@@ -348,13 +348,25 @@ Everything runs on the free Spark plan. No Cloud Functions are used and nothing 
 needs billing has been enabled or deployed. That has consequences:
 
 - The one-device session is a document the app writes itself, checked by the rules.
-  It stops the normal app; it is not tamper-proof against a modified app.
+  It stops the normal app; it is not tamper-proof against a modified app, which could
+  write its own device number or send another device's. Such an app still needs the
+  account's password and can do nothing the account's role may not do.
 - Online logins are created from the Faculty device through Firebase sign-up, so
   sign-up has to stay enabled. The rules give a sign-in no access until Faculty has
   linked it to an account.
 - Faculty cannot set someone else's password; resets go by email.
-- At the Firestore level a Coach can read every registration, like Asoo Core. What a
-  Coach can change is limited to the assigned sports.
+- A Coach reads and changes the private rows of the assigned sports only. An Asoo Core
+  can read every registration and score history (the app needs them to enter results),
+  but can write only the scores of what is assigned to them.
+- Everyone can read the name, role, branch and active flag of every organiser account
+  (fixtures show who scores them), and the team captain's name and the members of an
+  approved team. Emails, phone numbers and waiting or rejected registrations are not
+  public; how many registrations are hidden can be counted, their content cannot.
+- A Core can remove a fixture whose result is official, as in the app, even when
+  correcting official results is switched off for Cores.
+- A row is attributed to whoever sent it. If someone works without a connection and
+  another account then uses the same device, the first account's unsent history lines
+  are refused. Logging out sends what is waiting first, when there is a connection.
 - A device that was signed in as an organiser keeps the private rows it received after
   logging out. The app hides them, but they are in its database file.
 - The first device to upload claims the empty server. Do the upload yourself before

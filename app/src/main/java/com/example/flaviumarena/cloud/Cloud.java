@@ -261,6 +261,7 @@ public final class Cloud {
                 worker.execute(() -> {
                     try {
                         engine.applyRemote(changes);
+                        followCoachSports();
                     } catch (RuntimeException e) {
                         Log.w(TAG, "Applying server changes failed", e);
                     }
@@ -332,8 +333,35 @@ public final class Cloud {
         if (user != null && user.active) {
             scope.role = user.role;
             scope.branchId = user.branchId;
+            scope.sportIds = new ArrayList<>(user.coachSportIds);
         }
         store.setScope(scope);
+    }
+
+    /**
+     * A Coach reads the private rows of the assigned sports only. When Faculty changes
+     * the assignment, what this device asks the server for has to change with it, and
+     * the rows of a newly assigned sport have to be fetched from the beginning.
+     */
+    private void followCoachSports() {
+        FirestoreRemoteStore.Scope current = store.scope();
+        if (current == null || !Role.COACH.equals(current.role)) {
+            return;
+        }
+        String userId = app.getSharedPreferences("flavium_cloud", Context.MODE_PRIVATE)
+                .getString("user_id", null);
+        User user = userId == null ? null : repo.getUser(userId);
+        if (user == null || (user.coachSportIds.containsAll(current.sportIds)
+                && current.sportIds.containsAll(user.coachSportIds))) {
+            return;
+        }
+        applyScope(user);
+        try {
+            engine.reloadAll();
+        } catch (ArenaException e) {
+            Log.w(TAG, "Reloading after a change of sports failed: " + e.getMessage());
+        }
+        startListening();
     }
 
     private void rememberUser(String userId) {
@@ -457,6 +485,14 @@ public final class Cloud {
             store.setScope(scope);
             // The account may see more now than this device has: fetch it.
             engine.reloadAll();
+            User local = repo.getUser(userId);
+            if (local != null && Role.COACH.equals(expectedRole)
+                    && !local.coachSportIds.isEmpty()) {
+                // Only now is it known which sports this Coach has.
+                scope.sportIds = new ArrayList<>(local.coachSportIds);
+                store.setScope(scope);
+                engine.reloadAll();
+            }
             rememberUser(userId);
             User user = repo.loginVerified(userId, expectedRole, Build.MODEL);
             startListening();
@@ -478,6 +514,13 @@ public final class Cloud {
         worker.execute(() -> {
             stopListening();
             if (user != null) {
+                // What this account saved here goes out under its own name first; the
+                // next account on this device could not send it.
+                try {
+                    engine.sync();
+                } catch (RuntimeException e) {
+                    Log.w(TAG, "Last synchronisation before signing out failed", e);
+                }
                 try {
                     await(sessionDoc(user.getUid()).delete());
                 } catch (ArenaException e) {
@@ -514,6 +557,11 @@ public final class Cloud {
             if (debuggable && !emulator.isEmpty()) {
                 FirebaseAuth.getInstance(maker).useEmulator(emulator, 9099);
             }
+        }
+        // The server links a sign-in only to an account it already knows.
+        if (isConnected() && !engine.sync()) {
+            throw new RemoteStore.Unavailable("The server could not be reached, so the "
+                    + "account could not be sent to it first. Try again when connected.");
         }
         FirebaseAuth second = FirebaseAuth.getInstance(maker);
         String uid;

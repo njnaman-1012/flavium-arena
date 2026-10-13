@@ -70,8 +70,11 @@ public final class PublicView {
         }
         copy.rev = complete.rev;
         copy.complete = !isSplit(complete.table);
-        copy.branch = complete.branch;
-        copy.sport = complete.sport;
+        // A registration or account the public must not see says nothing about itself,
+        // not even which branch or sport it belonged to.
+        boolean hidden = copy.deleted && isSplit(complete.table);
+        copy.branch = hidden ? "" : complete.branch;
+        copy.sport = hidden ? "" : complete.sport;
         return copy;
     }
 }

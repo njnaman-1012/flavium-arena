@@ -71,6 +71,9 @@ public class PublicViewTest {
             assertTrue(status, copy.deleted);
             assertTrue(copy.values.isEmpty());
             assertEquals(7, copy.rev);
+            // Not even which branch or sport it belongs to.
+            assertEquals("", copy.branch);
+            assertEquals("", copy.sport);
         }
     }
 

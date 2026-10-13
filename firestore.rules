@@ -14,15 +14,39 @@ rules_version = '2';
 //
 // A row document: t (table), k (key), v (columns), rev, del, br (branch), sp (sport),
 // dev (writing device), by (writer). Its id is "t:k". Rows are never deleted, only
-// marked as removed, so every device hears about a removal.
+// marked as removed (del = true, v empty), so every device hears about a removal.
+//
+// Three kinds of table:
+//   public   the row is in pub and nowhere else
+//   private  the row is in priv and nowhere else
+//   split    registrations and accounts: the complete row is in priv, and pub holds a
+//            reduced copy that is written in the same transaction and must agree with it
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------------------------------------------------------------- who is asking
+    // ---------------------------------------------------------------- where things are
 
     function festival() {
       return /databases/$(database)/documents/festivals/main;
     }
+
+    function pubRow(id) {
+      return get(/databases/$(database)/documents/festivals/main/pub/$(id)).data;
+    }
+
+    function privRow(id) {
+      return get(/databases/$(database)/documents/festivals/main/priv/$(id)).data;
+    }
+
+    function pubAfter(id) {
+      return getAfter(/databases/$(database)/documents/festivals/main/pub/$(id)).data;
+    }
+
+    function privAfter(id) {
+      return getAfter(/databases/$(database)/documents/festivals/main/priv/$(id)).data;
+    }
+
+    // ---------------------------------------------------------------- who is asking
 
     function signedIn() {
       return request.auth != null;
@@ -32,44 +56,44 @@ service cloud.firestore {
       return /databases/$(database)/documents/festivals/main/links/$(request.auth.uid);
     }
 
-    // The festival account of the signed-in person.
-    function myId() {
-      return get(linkPath()).data.userId;
+    // The festival account of the signed-in person, as the server holds it. Which
+    // account that is comes from the link, which nobody can write for themselves (see
+    // "links" below). The role and branch always come from here, never from anything
+    // the device says. Without a link the lookup fails, and a rule that fails refuses.
+    //
+    // (A rule may evaluate only a limited number of expressions, so each rule looks
+    // this up once and hands it on, instead of asking again for every check.)
+    function me() {
+      return privRow('users:' + get(linkPath()).data.userId);
     }
 
-    function myRow() {
-      return get(/databases/$(database)/documents/festivals/main/priv/$('users:' + myId())).data;
+    // An organiser: an account that exists and is active.
+    function active(u) {
+      return u.del == false && u.v.active == 1;
     }
 
-    // An organiser: signed in, linked to an account that exists and is active.
-    function organiser() {
-      return signedIn() && exists(linkPath()) && myRow().del == false && myRow().v.active == 1;
+    // The role of the signed-in person, or '' when their account is not active.
+    function activeRole() {
+      let u = me();
+      return active(u) ? u.v.role : '';
     }
 
-    function role() {
-      return myRow().v.role;
-    }
-
-    // One session per account: a write must come from the device the account is
-    // signed in on. (The account itself sets that device, see "sessions" below.)
+    // One session per account: a write must carry the device the account is signed in
+    // on. The account sets that device itself (see "sessions"), so this stops the
+    // unmodified app on a second device; it is not proof against a modified app.
     function onMyDevice(d) {
       return get(/databases/$(database)/documents/festivals/main/sessions/$(request.auth.uid)).data.dev == d.dev;
     }
 
-    // While the first device is uploading the festival, that device may write
-    // everything. Afterwards nobody has this freedom.
+    // While the first device is uploading the festival, that device may write every
+    // row. The shape, revision and consistency checks below still apply to it.
     function uploading() {
-      return signedIn()
-        && get(festival()).data.ownerUid == request.auth.uid
-        && get(festival()).data.ready == false;
+      let f = get(festival()).data;
+      return signedIn() && f.ownerUid == request.auth.uid && f.ready == false;
     }
 
     function setting(name) {
-      return get(/databases/$(database)/documents/festivals/main/pub/$('settings:' + name)).data.v.value;
-    }
-
-    function pubRow(id) {
-      return get(/databases/$(database)/documents/festivals/main/pub/$(id)).data;
+      return pubRow('settings:' + name).v.value;
     }
 
     // ---------------------------------------------------------------- the shape of a row
@@ -87,24 +111,80 @@ service cloud.firestore {
                    'match_events', 'event_rounds', 'event_entries', 'event_attempts', 'settings'];
     }
 
+    function isHistory(t) {
+      return t in ['score_audit', 'event_audit', 'admin_audit'];
+    }
+
     function wellFormed(id, d) {
-      return d.keys().hasAll(['t', 'k', 'v', 'rev', 'del', 'br', 'sp', 'dev', 'by'])
-        && id == d.t + ':' + d.k
-        && d.del is bool && d.v is map && d.rev is int
+      return d.size() == 9
+        && d.keys().hasOnly(['t', 'k', 'v', 'rev', 'del', 'br', 'sp', 'dev', 'by'])
+        && d.t is string && d.k is string && id == d.t + ':' + d.k
+        && d.del is bool && d.v is map && d.rev is int && d.dev is int
+        && d.br is string && d.sp is string
         && d.by == request.auth.uid;
     }
 
     // The row takes the next revision, and the counter moves with it in the same
     // transaction. A row can therefore never be stored with an old or invented number.
+    // Because no stored row is ever ahead of the counter, a row that carries the new
+    // number was written in this transaction and passed its own rule.
     function nextRevision(d) {
-      return getAfter(festival()).data.rev == get(festival()).data.rev + 1
-        && d.rev == getAfter(festival()).data.rev;
+      let next = getAfter(festival()).data.rev;
+      return next == get(festival()).data.rev + 1 && d.rev == next;
+    }
+
+    // The columns say which row this is; they must agree with the document's id, or a
+    // device applying the row would overwrite a different one.
+    function honestKey(d) {
+      return d.t == 'settings' ? d.v.name == d.k
+        : d.t == 'coach_sports' ? d.k == d.v.user_id + '|' + d.v.sport_id
+        : d.v.id == d.k;
     }
 
     // The branch written on a row must be the branch in the row.
     function honestBranch(d) {
-      return d.del || !(d.t in ['registrations', 'users'])
-        || (d.v.branch_id == null && d.br == '') || d.v.branch_id == d.br;
+      return d.t in ['registrations', 'users']
+        ? ((d.v.branch_id == null && d.br == '') || d.v.branch_id == d.br)
+        : d.br == '';
+    }
+
+    // The sport a row really belongs to, followed up through the rows it points to.
+    function sportOf(d) {
+      return d.t == 'categories' ? d.v.sport_id
+        : d.t in ['registrations', 'matches', 'event_rounds']
+          ? pubRow('categories:' + d.v.category_id).sp
+        : d.t in ['match_periods', 'match_events', 'score_audit']
+          ? pubRow('matches:' + d.v.match_id).sp
+        : d.t in ['event_entries', 'event_audit']
+          ? pubRow('event_rounds:' + d.v.round_id).sp
+        : d.t == 'event_attempts'
+          ? pubRow('event_entries:' + d.v.entry_id).sp
+        : '';
+    }
+
+    // An account row holds the profile and nothing else. Password hashes, salts and
+    // lockout counters can never be stored, whoever asks.
+    function honestAccount(d) {
+      return d.t != 'users'
+        || (d.v.keys().hasOnly(['id', 'name', 'email', 'role', 'active', 'branch_id'])
+            && d.v.role in ['FACULTY', 'CORE', 'ASOO_CORE', 'COACH', 'CAPTAIN']
+            && d.v.active in [0, 1]
+            && d.v.name is string && d.v.email is string);
+    }
+
+    // Marking a row as removed: it must exist, it loses its content, and it keeps the
+    // branch and sport it had so it is still known whose row it was.
+    function removal(d) {
+      return resource != null && resource.data.del == false
+        && d.v.size() == 0
+        && d.br == resource.data.br && d.sp == resource.data.sp;
+    }
+
+    // Score histories and the administrative log are written once. Nobody, Faculty
+    // included, can change a line afterwards, and the administrative log cannot be
+    // removed either. (A score history goes when its fixture is removed.)
+    function historyKept(d) {
+      return !isHistory(d.t) || resource == null || (d.del && d.t != 'admin_audit');
     }
 
     // ---------------------------------------------------------------- Core
@@ -113,89 +193,126 @@ service cloud.firestore {
       return r == 'ASOO_CORE' || (r == 'CAPTAIN' && setting('core_can_appoint_captains') == 1);
     }
 
-    function coreWrite(d) {
-      return (d.t in ['sports', 'categories', 'registrations', 'match_periods', 'match_events',
-                      'score_audit', 'event_entries', 'event_attempts', 'event_audit'])
-        // Making a result official, or taking that back, only when Faculty allows it.
+    function coreMayFinalise() {
+      return setting('core_can_finalise') == 1;
+    }
+
+    function resultColumns() {
+      return ['score_a', 'score_b', 'pen_a', 'pen_b', 'score_note', 'status',
+              'current_period', 'is_final'];
+    }
+
+    function coreWrite(d, myId) {
+      return (d.t in ['sports', 'categories', 'registrations'])
+        // Fixtures and events. Making a result official, taking that back, and
+        // changing an official result only when Faculty allows it.
         || (d.t in ['matches', 'event_rounds']
             && (d.del
+                || coreMayFinalise()
                 || (resource == null && d.v.is_final == 0)
                 || (resource != null && resource.data.del == false
-                    && d.v.is_final == resource.data.v.is_final)
-                || setting('core_can_finalise') == 1))
-        // The administrative log can be added to, never changed.
-        || (d.t == 'admin_audit' && resource == null && !d.del)
-        // Accounts: never Faculty, Core or Coach accounts.
+                    && d.v.is_final == resource.data.v.is_final
+                    && (d.v.is_final == 0
+                        || !d.v.diff(resource.data.v).affectedKeys().hasAny(resultColumns())))))
+        // Sets, innings, goals: not of an official result, unless Faculty allows it.
+        || (d.t in ['match_periods', 'match_events']
+            && (d.del || coreMayFinalise() || pubRow('matches:' + d.v.match_id).v.is_final == 0))
+        || (d.t == 'event_entries'
+            && (d.del || coreMayFinalise()
+                || pubRow('event_rounds:' + d.v.round_id).v.is_final == 0))
+        || (d.t == 'event_attempts'
+            && (d.del || coreMayFinalise()
+                || pubRow('event_rounds:'
+                    + pubRow('event_entries:' + d.v.entry_id).v.round_id).v.is_final == 0))
+        // History lines in their own name.
+        || (d.t in ['score_audit', 'event_audit'] && (d.del || d.v.changed_by == myId))
+        || (d.t == 'admin_audit' && !d.del && d.v.actor_id == myId)
+        // Accounts: never Faculty, Core or Coach accounts, neither before nor after
+        // the change, and never an account that was removed.
         || (d.t == 'users'
-            && (d.del || coreMayManageRole(d.v.role))
-            && (resource == null || resource.data.del || coreMayManageRole(resource.data.v.role)));
+            && (resource == null
+                || (resource.data.del == false && coreMayManageRole(resource.data.v.role)))
+            && (d.del || coreMayManageRole(d.v.role)));
     }
 
     // ---------------------------------------------------------------- Coach
 
-    function coaches(sportId) {
+    function coaches(myId, sportId) {
       return sportId != ''
-        && get(/databases/$(database)/documents/festivals/main/priv/$('coach_sports:' + myId() + '|' + sportId)).data.del == false;
+        && privRow('coach_sports:' + myId + '|' + sportId).del == false;
     }
 
-    // The sport written on a row must really be the sport of the row.
-    function honestSport(d) {
-      return (d.t == 'categories' && d.v.sport_id == d.sp)
-        || (d.t in ['registrations', 'matches', 'event_rounds']
-            && pubRow('categories:' + d.v.category_id).sp == d.sp)
-        || (d.t in ['match_periods', 'match_events', 'score_audit']
-            && pubRow('matches:' + d.v.match_id).sp == d.sp)
-        || (d.t in ['event_entries', 'event_audit']
-            && pubRow('event_rounds:' + d.v.round_id).sp == d.sp)
-        || (d.t == 'event_attempts' && pubRow('event_entries:' + d.v.entry_id).sp == d.sp);
-    }
-
-    function coachWrite(d) {
+    // Everything inside the sports Faculty assigned to them, and nothing else. The
+    // sport on the row is checked against the real one for every writer (see rowOk).
+    function coachWrite(d, myId) {
       return d.t in ['categories', 'registrations', 'matches', 'match_periods', 'match_events',
                      'score_audit', 'event_rounds', 'event_entries', 'event_attempts', 'event_audit']
-        && coaches(d.sp)
+        && coaches(myId, d.sp)
         && (resource == null || resource.data.sp == d.sp)
-        && (d.del ? resource != null : honestSport(d));
+        && (!(d.t in ['score_audit', 'event_audit']) || d.del || d.v.changed_by == myId);
     }
 
     // ---------------------------------------------------------------- Asoo Core
 
-    function assignedMatch(matchId) {
-      return pubRow('matches:' + matchId).v.assigned_to == myId()
-        && pubRow('matches:' + matchId).v.is_final == 0;
+    function scoringColumns() {
+      return ['score_a', 'score_b', 'pen_a', 'pen_b', 'score_note', 'status',
+              'current_period', 'updated_at', 'updated_by', 'version'];
     }
 
-    function assignedRound(roundId) {
-      return pubRow('event_rounds:' + roundId).v.assigned_to == myId()
-        && pubRow('event_rounds:' + roundId).v.is_final == 0;
+    function assignedMatch(myId, matchId) {
+      let m = pubRow('matches:' + matchId).v;
+      return m.assigned_to == myId && m.is_final == 0;
     }
 
-    function asooWrite(d) {
+    function assignedRound(myId, roundId) {
+      let r = pubRow('event_rounds:' + roundId).v;
+      return r.assigned_to == myId && r.is_final == 0;
+    }
+
+    function asooWrite(d, myId) {
       // The score and status of a fixture or event assigned to them, while it is not
-      // official. They cannot create, remove, reassign or make official.
+      // official. Nothing else about it: not the teams, the time, the venue, who it is
+      // assigned to, or whether it is official. They cannot create or remove one.
       return (d.t in ['matches', 'event_rounds'] && resource != null && !d.del
               && resource.data.del == false
-              && resource.data.v.assigned_to == myId() && d.v.assigned_to == myId()
-              && resource.data.v.is_final == 0 && d.v.is_final == 0
-              && d.v.category_id == resource.data.v.category_id)
-        || (d.t in ['match_periods', 'match_events', 'score_audit']
-            && assignedMatch(d.del ? resource.data.v.match_id : d.v.match_id))
-        || (d.t == 'event_audit' && !d.del && resource == null && assignedRound(d.v.round_id))
+              && resource.data.v.assigned_to == myId
+              && resource.data.v.is_final == 0
+              && d.v.diff(resource.data.v).affectedKeys().hasOnly(scoringColumns()))
+        // Sets and innings of that fixture: add and change, never move to another
+        // fixture and never remove.
+        || (d.t == 'match_periods' && !d.del
+            && (resource == null || resource.data.v.match_id == d.v.match_id)
+            && assignedMatch(myId, d.v.match_id))
+        // Goals and cards of that fixture: add, change, remove.
+        || (d.t == 'match_events'
+            && (d.del
+                ? assignedMatch(myId, resource.data.v.match_id)
+                : ((resource == null
+                      ? d.v.created_by == myId
+                      : resource.data.v.match_id == d.v.match_id)
+                   && assignedMatch(myId, d.v.match_id))))
+        // History lines: new ones only, in their own name.
+        || (d.t == 'score_audit' && resource == null && !d.del
+            && d.v.changed_by == myId && assignedMatch(myId, d.v.match_id))
+        || (d.t == 'event_audit' && resource == null && !d.del
+            && d.v.changed_by == myId && assignedRound(myId, d.v.round_id))
+        // Results of the entrants of that event; who takes part is not theirs to decide.
         || (d.t == 'event_entries' && resource != null && !d.del
+            && resource.data.del == false
             && d.v.registration_id == resource.data.v.registration_id
             && d.v.round_id == resource.data.v.round_id
-            && assignedRound(d.v.round_id))
-        || (d.t == 'event_attempts'
-            && assignedRound(pubRow('event_entries:'
-                + (d.del ? resource.data.v.entry_id : d.v.entry_id)).v.round_id));
+            && assignedRound(myId, d.v.round_id))
+        || (d.t == 'event_attempts' && !d.del
+            && (resource == null || resource.data.v.entry_id == d.v.entry_id)
+            && assignedRound(myId, pubRow('event_entries:' + d.v.entry_id).v.round_id));
     }
 
     // ---------------------------------------------------------------- Branch CR
 
-    function crWrite(d) {
+    function crWrite(d, myBranch) {
       // Registrations of their own branch: new ones start as PENDING; an approved one
       // can only have its logo changed; a rejected one goes back to PENDING when edited.
-      return d.t == 'registrations' && d.br == myRow().v.branch_id
+      return d.t == 'registrations' && d.br != '' && d.br == myBranch
         && ((resource == null && !d.del && d.v.status == 'PENDING')
             || (resource != null && resource.data.br == d.br && resource.data.del == false
                 && ((d.del && resource.data.v.status != 'APPROVED')
@@ -207,24 +324,84 @@ service cloud.firestore {
     // ---------------------------------------------------------------- writing a row
 
     function mayWrite(d) {
-      return organiser() && onMyDevice(d)
-        && (role() == 'FACULTY'
-            || (role() == 'CORE' && coreWrite(d))
-            || (role() == 'COACH' && coachWrite(d))
-            || (role() == 'ASOO_CORE' && asooWrite(d))
-            || (role() == 'CAPTAIN' && crWrite(d)));
+      let u = me();
+      let r = u.v.role;
+      return active(u) && onMyDevice(d)
+        && (r == 'FACULTY'
+            || (r == 'CORE' && coreWrite(d, u.k))
+            || (r == 'COACH' && coachWrite(d, u.k))
+            || (r == 'ASOO_CORE' && asooWrite(d, u.k))
+            || (r == 'CAPTAIN' && crWrite(d, u.v.branch_id)));
+    }
+
+    // Everything a row must satisfy where it is kept complete (pub for the public
+    // tables, priv for the others). These checks hold for every writer, Faculty and
+    // the uploading device included; only the last line depends on the role.
+    function rowOk(id, d) {
+      return wellFormed(id, d)
+        && nextRevision(d)
+        && (d.del
+            ? removal(d)
+            : (honestKey(d) && honestBranch(d) && d.sp == sportOf(d) && honestAccount(d)))
+        && historyKept(d)
+        && (uploading() || mayWrite(d));
+    }
+
+    // The public copy of a registration or an account. It is not trusted on its own:
+    // it must be written together with the complete row and say exactly what that row
+    // allows the public to see.
+    //   registration  only while APPROVED, identical except that the phone number is
+    //                 blank; otherwise an empty "removed" marker
+    //   account       identical except that the email is a placeholder
+    function publicCopyOk(id, d) {
+      let p = privAfter(id);
+      let hidden = p.del || (d.t == 'registrations' && p.v.status != 'APPROVED');
+      return wellFormed(id, d)
+        && nextRevision(d)
+        && p.rev == d.rev && p.t == d.t && p.k == d.k && p.dev == d.dev
+        && (hidden
+            ? (d.del && d.v.size() == 0 && d.br == '' && d.sp == '')
+            : (!d.del && d.br == p.br && d.sp == p.sp
+               && (d.t == 'registrations'
+                   ? (d.v.contact_phone == ''
+                      && d.v.diff(p.v).affectedKeys().hasOnly(['contact_phone']))
+                   : (d.v.email == d.k + '@hidden.invalid'
+                      && d.v.diff(p.v).affectedKeys().hasOnly(['email'])))));
+    }
+
+    // ---------------------------------------------------------------- linking a sign-in
+
+    // "target" is the account the sign-in is to be linked to: it must exist.
+    //   Faculty  any account
+    //   Core     only the roles a Core may manage, never their own sign-in, and never
+    //            a sign-in that is linked to an account they may not manage
+    function linkAllowed(uid, role, target) {
+      return target.del == false
+        && (role == 'FACULTY'
+            || (role == 'CORE' && request.auth.uid != uid
+                && coreMayManageRole(target.v.role)
+                && (resource == null
+                    || coreMayManageRole(privRow('users:' + resource.data.userId).v.role))));
     }
 
     // ---------------------------------------------------------------- reading private rows
 
     function mayReadPrivate(r) {
-      return organiser()
-        && (role() == 'FACULTY'
-            || (role() == 'CORE'
+      let u = me();
+      let role = u.v.role;
+      return active(u)
+        && (role == 'FACULTY'
+            || (role == 'CORE'
                 && r.t in ['registrations', 'users', 'score_audit', 'event_audit', 'coach_sports'])
-            || (role() in ['ASOO_CORE', 'COACH']
+            || (role == 'ASOO_CORE'
                 && r.t in ['registrations', 'score_audit', 'event_audit', 'coach_sports'])
-            || (role() == 'CAPTAIN' && r.t == 'registrations' && r.br == myRow().v.branch_id));
+            // A Coach: the registrations and histories of the assigned sports only.
+            || (role == 'COACH'
+                && (r.t == 'coach_sports'
+                    || (r.t in ['registrations', 'score_audit', 'event_audit']
+                        && coaches(u.k, r.sp))))
+            || (role == 'CAPTAIN' && r.t == 'registrations'
+                && r.br != '' && r.br == u.v.branch_id));
     }
 
     // ================================================================ the documents
@@ -234,23 +411,32 @@ service cloud.firestore {
 
       // The first device reserves the empty server for itself.
       allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['owner', 'ownerUid', 'ready', 'rev'])
+        && request.resource.data.keys().hasOnly(['owner', 'ownerUid', 'ready', 'rev'])
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.ready == false
         && request.resource.data.rev == 0
         && request.resource.data.owner is int;
 
       allow update: if signedIn()
+        && request.resource.data.keys().hasOnly(['owner', 'ownerUid', 'ready', 'rev', 'last', 'lastPriv'])
         && request.resource.data.owner == resource.data.owner
         && request.resource.data.ownerUid == resource.data.ownerUid
         && (
-          // one step of the revision counter, together with a row (checked on the row)
+          // One step of the revision counter, and only together with the row it names:
+          // that row must carry the new number, so it was written, and checked, in
+          // this transaction. The counter cannot be moved on its own.
           (request.resource.data.rev == resource.data.rev + 1
             && request.resource.data.ready == resource.data.ready
-            && (uploading() || organiser()))
-          // the uploading device declares the festival complete
+            && request.resource.data.last is string
+            && request.resource.data.lastPriv is bool
+            && (request.resource.data.lastPriv
+                ? privAfter(request.resource.data.last).rev == request.resource.data.rev
+                : pubAfter(request.resource.data.last).rev == request.resource.data.rev))
+          // The uploading device declares the festival complete. Nothing else changes.
           || (resource.data.ownerUid == request.auth.uid
             && resource.data.ready == false && request.resource.data.ready == true
-            && request.resource.data.rev == resource.data.rev)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ready']))
         );
 
       allow delete: if false;
@@ -259,17 +445,10 @@ service cloud.firestore {
         allow read: if true;
 
         allow create, update: if signedIn()
-          && wellFormed(id, request.resource.data)
-          && nextRevision(request.resource.data)
-          && (
-            uploading()
-            // The public copy of a registration or account is written together with the
-            // complete row, and it is the complete row that is checked.
-            || (isSplitTable(request.resource.data.t)
-                && getAfter(/databases/$(database)/documents/festivals/main/priv/$(id)).data.rev
-                   == request.resource.data.rev)
-            || (isPublicTable(request.resource.data.t) && mayWrite(request.resource.data))
-          );
+          && (isPublicTable(request.resource.data.t)
+              ? rowOk(id, request.resource.data)
+              : (isSplitTable(request.resource.data.t)
+                 && publicCopyOk(id, request.resource.data)));
 
         allow delete: if false;
       }
@@ -278,43 +457,58 @@ service cloud.firestore {
         // Asking for one row that does not exist tells an organiser only that: it does
         // not exist. (The app asks before it creates a row.)
         allow get: if signedIn()
-          && (uploading() || (resource == null ? organiser() : mayReadPrivate(resource.data)));
+          && (uploading()
+              || (resource == null ? activeRole() != '' : mayReadPrivate(resource.data)));
         allow list: if signedIn() && (uploading() || mayReadPrivate(resource.data));
 
         allow create, update: if signedIn()
-          && wellFormed(id, request.resource.data)
-          && nextRevision(request.resource.data)
-          && honestBranch(request.resource.data)
           && (isPrivateTable(request.resource.data.t) || isSplitTable(request.resource.data.t))
-          && (uploading() || mayWrite(request.resource.data));
+          && rowOk(id, request.resource.data)
+          // A registration or an account never changes without its public copy.
+          && (!isSplitTable(request.resource.data.t)
+              || pubAfter(id).rev == request.resource.data.rev);
 
         allow delete: if false;
       }
 
       match /links/{uid} {
-        // Which festival account a signed-in person is. Created by Faculty (or by a
-        // Core for the roles a Core may manage), and once by the uploading device.
+        // Which festival account a signed-in person is. This decides the role, so
+        // nobody can write their own, except the uploading device once.
+        //   Faculty  any account that exists
+        //   Core     only the roles a Core may manage, and never a sign-in that is
+        //            currently linked to anything else (so not Faculty's, not their own)
         allow read: if signedIn()
-          && (request.auth.uid == uid || (organiser() && role() in ['FACULTY', 'CORE']));
+          && (request.auth.uid == uid || activeRole() in ['FACULTY', 'CORE']);
 
         allow create, update: if signedIn()
           && request.resource.data.keys().hasOnly(['userId'])
           && request.resource.data.userId is string
           && (
             (uploading() && request.auth.uid == uid)
-            || (organiser() && role() == 'FACULTY')
-            || (organiser() && role() == 'CORE'
-                && coreMayManageRole(get(/databases/$(database)/documents/festivals/main/priv/$('users:' + request.resource.data.userId)).data.v.role))
+            || linkAllowed(uid, activeRole(), privRow('users:' + request.resource.data.userId))
           );
 
-        allow delete: if organiser() && role() == 'FACULTY';
+        allow delete: if signedIn() && activeRole() == 'FACULTY';
       }
 
       match /sessions/{uid} {
-        // The device an account is signed in on. Only the account itself may set it.
-        // This makes "one session per account" work across devices for the unmodified
-        // app; a modified app could set its own device back, so it is not tamper-proof.
-        allow read, write: if signedIn() && request.auth.uid == uid;
+        // The device an account is signed in on. Only the account itself may set it,
+        // and only once it is an account of the festival.
+        //
+        // What this gives: the unmodified app on a second device is refused until it
+        // takes the session over, and the first device is then signed out.
+        // What it cannot give without trusted server code: a modified app can write
+        // its own device here, or send another device's number, and carry on. It
+        // still needs the account's password, and can do nothing the account's role
+        // may not do.
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && (exists(linkPath()) || uploading())
+          && request.resource.data.keys().hasAll(['dev'])
+          && request.resource.data.keys().hasOnly(['dev', 'name'])
+          && request.resource.data.dev is int
+          && (!('name' in request.resource.data) || request.resource.data.name is string);
       }
     }
   }

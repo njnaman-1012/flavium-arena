@@ -294,6 +294,22 @@ public class SyncEngine {
         // What is sent is the row as it is now, not as it was when the line was written.
         Change local = readLocal(table, key);
         long baseRev = revOf(db, table, key);
+        if (local.deleted && baseRev == 0) {
+            // Added and removed again before it was ever sent: the server has nothing
+            // to be told. (If an earlier attempt did reach the server and only its
+            // answer was lost, the server's copy comes back instead of being removed
+            // unseen.)
+            Change server = serverCopy(table, key);
+            if (server == null || server.deleted) {
+                db.delete("sync_outbox", "seq = ?", new String[]{String.valueOf(seq)});
+                return false;
+            }
+            takeServerCopy(server, table, key);
+            notices.add("Removing " + describe(table) + " was not sent: the server "
+                    + "already had a saved copy, which is shown again. Remove it once more "
+                    + "if it should go.");
+            return false;
+        }
         if (baseRev > 0 && !isComplete(db, table, key)) {
             // This device only ever received the public copy of the row (no phone
             // number, no email), so sending it would erase the rest on the server.

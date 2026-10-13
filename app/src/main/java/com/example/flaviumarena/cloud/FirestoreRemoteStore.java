@@ -90,6 +90,10 @@ public class FirestoreRemoteStore implements RemoteStore {
         this.scope = scope;
     }
 
+    public Scope scope() {
+        return scope;
+    }
+
     DocumentReference meta() {
         return meta;
     }
@@ -135,7 +139,9 @@ public class FirestoreRemoteStore implements RemoteStore {
                 change.sport = stringOf(current, "sp");
             }
             change.rev = rev;
-            transaction.update(meta, "rev", rev);
+            // The counter names the row it moves for; the rules refuse a step of the
+            // counter that does not come with that row.
+            transaction.update(meta, "rev", rev, "last", id, "lastPriv", !publicTable);
             transaction.set(primary, toDocument(change, uid));
             if (PublicView.isSplit(change.table)) {
                 transaction.set(pub.document(id), toDocument(PublicView.of(change), uid));
@@ -215,9 +221,19 @@ public class FirestoreRemoteStore implements RemoteStore {
         } else if (Role.CORE.equals(s.role)) {
             list.add(privateTables(since, "registrations", "users", "score_audit", "event_audit",
                     "coach_sports"));
-        } else if (Role.ASOO_CORE.equals(s.role) || Role.COACH.equals(s.role)) {
+        } else if (Role.ASOO_CORE.equals(s.role)) {
             list.add(privateTables(since, "registrations", "score_audit", "event_audit",
                     "coach_sports"));
+        } else if (Role.COACH.equals(s.role)) {
+            // A Coach sees who coaches what, and the registrations and histories of the
+            // sports assigned to them: one question per sport, because the server only
+            // answers a question it can see is limited to an assigned sport.
+            list.add(privateTables(since, "coach_sports"));
+            for (String sportId : s.sportIds) {
+                list.add(priv.whereIn("t", Arrays.asList("registrations", "score_audit",
+                                "event_audit")).whereEqualTo("sp", sportId)
+                        .whereGreaterThan("rev", since).orderBy("rev"));
+            }
         } else if (Role.CAPTAIN.equals(s.role) && s.branchId != null) {
             // A Branch CR sees the complete registrations of their own branch only.
             list.add(priv.whereEqualTo("t", "registrations").whereEqualTo("br", s.branchId)

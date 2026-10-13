@@ -16,6 +16,15 @@
         { "fieldPath": "br", "order": "ASCENDING" },
         { "fieldPath": "rev", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "priv",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sp", "order": "ASCENDING" },
+        { "fieldPath": "t", "order": "ASCENDING" },
+        { "fieldPath": "rev", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
