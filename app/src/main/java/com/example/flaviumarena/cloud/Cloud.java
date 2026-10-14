@@ -2,9 +2,12 @@ package com.example.flaviumarena.cloud;
 
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 
 import com.example.flaviumarena.R;
@@ -35,7 +38,6 @@ import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Source;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -69,6 +71,13 @@ public final class Cloud {
     /** Told on the main thread when shared data or the connection status changed. */
     public interface Observer {
         void onCloudChanged();
+
+        /**
+         * Only the connection or the number of waiting changes changed. Nothing on the
+         * screen needs to be reloaded, so a form being filled in is left alone.
+         */
+        default void onSyncStatusChanged() {
+        }
     }
 
     private final Context app;
@@ -88,6 +97,32 @@ public final class Cloud {
     private boolean syncQueued;
     /** Set when the account was signed in on another device; the next screen logs out. */
     private volatile boolean sessionTakenOver;
+    /** Whether the phone has a network at all. Firebase itself retries quietly. */
+    private volatile boolean online = true;
+    /** Failed exchanges in a row; the next attempt waits longer each time. */
+    private int failures;
+    private final Runnable retry = this::requestSync;
+    /** What the last attempt to connect found; null while nothing is known yet. */
+    private volatile SyncEngine.Connection connection;
+    /** When this device last asked the server whether it can connect (elapsed time). */
+    private volatile long lastConnectAttempt;
+    /**
+     * Held while connecting, so two callers (the app starting, the login screen) can
+     * never connect twice at once. Not the object's own lock: saving must never wait
+     * for the network.
+     */
+    private final Object connectLock = new Object();
+    /** True while changes are being exchanged with the server. */
+    private volatile boolean syncing;
+    /** Why the live updates stopped, or "" while they work. */
+    private volatile String listenerProblem = "";
+    /** Starts the live updates again after they stopped with an error. */
+    private final Runnable relisten = () -> worker.execute(() -> {
+        if (isConnected() && !observers.isEmpty()) {
+            applyScope(null);
+            startListening();
+        }
+    });
 
     public static synchronized Cloud get(Context context) {
         if (instance == null) {
@@ -117,6 +152,55 @@ public final class Cloud {
         store = new FirestoreRemoteStore(firestore, probe.deviceId());
         engine = new SyncEngine(RepositoryProvider.database(context), store);
         engine.setListener(tables -> notifyObservers());
+        watchNetwork();
+    }
+
+    /**
+     * Notices when the phone loses and regains its network. When it comes back, what
+     * was saved meanwhile is sent at once, without anyone pressing anything.
+     */
+    private void watchNetwork() {
+        ConnectivityManager connectivity = app.getSystemService(ConnectivityManager.class);
+        if (connectivity == null) {
+            return;
+        }
+        online = connectivity.getActiveNetwork() != null;
+        try {
+            connectivity.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    online = true;
+                    synchronized (Cloud.this) {
+                        failures = 0;
+                    }
+                    main.removeCallbacks(retry);
+                    worker.execute(() -> {
+                        lastConnectAttempt = 0;
+                        connectQuietly();
+                        requestSync();
+                    });
+                    notifyStatus();
+                }
+
+                @Override
+                public void onLost(Network network) {
+                    online = false;
+                    notifyStatus();
+                }
+            });
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Cannot watch the network", e);
+        }
+    }
+
+    /** False while the phone has no network. Changes are then kept and sent later. */
+    public boolean isOnline() {
+        return online;
+    }
+
+    /** See SyncEngine.lastReceived: changes to a row that came from another device. */
+    public long lastReceived(String table, String key) {
+        return isConfigured() ? engine.lastReceived(table, key) : 0;
     }
 
     // =====================================================================
@@ -139,6 +223,21 @@ public final class Cloud {
 
     public boolean hasLocalFestival() {
         return isConfigured() && engine.hasLocalFestival();
+    }
+
+    /** What connecting found: see SyncEngine.Connection. Null while nothing is known. */
+    public SyncEngine.Connection connection() {
+        return isConnected() ? SyncEngine.Connection.CONNECTED : connection;
+    }
+
+    /** True while changes are being sent or received. */
+    public boolean isSyncing() {
+        return syncing;
+    }
+
+    /** Why the live updates from other devices stopped, or "" while they work. */
+    public String listenerProblem() {
+        return listenerProblem;
     }
 
     /** Conflicts, refusals and errors the person should see. Asking clears the list. */
@@ -177,6 +276,38 @@ public final class Cloud {
         });
     }
 
+    private void notifyStatus() {
+        main.post(() -> {
+            for (Observer observer : observers) {
+                observer.onSyncStatusChanged();
+            }
+        });
+    }
+
+    /**
+     * After a failed exchange, tries again by itself while the app is open: after 5
+     * seconds, then 10, 20, 40, and every minute from then on. A success, or the
+     * network coming back, starts the count again.
+     */
+    private void scheduleRetry(boolean succeeded) {
+        main.removeCallbacks(retry);
+        if (succeeded || engine.pendingCount() == 0) {
+            synchronized (this) {
+                failures = 0;
+            }
+            return;
+        }
+        if (observers.isEmpty()) {
+            return; // the app is in the background; it tries again when it is opened
+        }
+        long delay;
+        synchronized (this) {
+            failures++;
+            delay = Math.min(60_000L, 5_000L << Math.min(failures - 1, 4));
+        }
+        main.postDelayed(retry, delay);
+    }
+
     private void notice(String text) {
         synchronized (notices) {
             if (!notices.contains(text)) {
@@ -189,16 +320,111 @@ public final class Cloud {
     // Keeping up to date while the app is open
     // =====================================================================
 
-    /** A screen came to the front: listen for changes and exchange what is waiting. */
+    /**
+     * A screen came to the front. A device that is not part of the online festival yet
+     * joins it by itself; a connected one listens for changes and exchanges what is
+     * waiting. Nobody has to press anything.
+     */
     public void onForeground() {
-        if (!isConnected()) {
+        if (!isConfigured()) {
             return;
         }
         worker.execute(() -> {
-            applyScope(null);
-            startListening();
+            connectQuietly();
+            if (isConnected()) {
+                applyScope(null);
+                startListening();
+                requestSync();
+            }
         });
-        requestSync();
+    }
+
+    /**
+     * Connects if it can without asking anybody: a new installation joins the online
+     * festival, an interrupted set-up continues. Asks the server at most every 30
+     * seconds while that finds nothing to connect to. Runs on the worker thread.
+     */
+    private void connectQuietly() {
+        if (isConnected()) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (lastConnectAttempt != 0 && now - lastConnectAttempt < 30_000) {
+            return;
+        }
+        lastConnectAttempt = now;
+        try {
+            connect(false);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Not connected yet: " + e.getMessage());
+        }
+        notifyStatus();
+    }
+
+    /**
+     * Waits. Becomes part of the online festival if possible (see SyncEngine.connect).
+     * replaceLocalData is true only when the person decided that this device's own
+     * data may be replaced; a copy of the database is kept first.
+     */
+    public SyncEngine.Connection connect(boolean replaceLocalData) {
+        if (!isConfigured()) {
+            return null;
+        }
+        synchronized (connectLock) {
+            return connectLocked(replaceLocalData);
+        }
+    }
+
+    private SyncEngine.Connection connectLocked(boolean replaceLocalData) {
+        boolean wasConnected = isConnected();
+        final boolean hadOwnData = engine.hasLocalFestival();
+        SyncEngine.Connection result;
+        if (engine.status().link == SyncEngine.LINK_UPLOADING) {
+            // This device was setting up online sync: carry on where it stopped. Only the
+            // Faculty sign-in that started it can.
+            if (auth.getCurrentUser() == null) {
+                connection = SyncEngine.Connection.SETTING_UP;
+                return connection;
+            }
+            applyScope(null);
+            engine.uploadAsFestival();
+            result = SyncEngine.Connection.CONNECTED;
+        } else {
+            result = engine.connect(replaceLocalData, () -> {
+                if (hadOwnData) {
+                    LocalBackup.copy(app, RepositoryProvider.database(app));
+                }
+                // The device starts as a public device; whoever logs in next gets the
+                // rows their account may see.
+                auth.signOut();
+                rememberUser(null);
+                applyScope(null);
+            });
+        }
+        connection = result;
+        if (result == SyncEngine.Connection.CONNECTED && !wasConnected) {
+            if (hadOwnData && engine.status().link == SyncEngine.LINK_CONNECTED
+                    && auth.getCurrentUser() == null) {
+                notice("This device now uses the online festival. A copy of its earlier "
+                        + "data was kept. Log in again with your online account.");
+            }
+            startListening();
+            notifyObservers();
+        }
+        return result;
+    }
+
+    /**
+     * Waits. Before a login: connect if possible, so the server checks the password. Null
+     * when the server cannot be reached; the login then works on this device's own data.
+     */
+    public SyncEngine.Connection connectForLogin() {
+        try {
+            lastConnectAttempt = SystemClock.elapsedRealtime();
+            return connect(false);
+        } catch (RemoteStore.Unavailable e) {
+            return null;
+        }
     }
 
     /** The last screen went away: stop listening (the system may stop the app anyway). */
@@ -206,6 +432,8 @@ public final class Cloud {
         if (!isConfigured() || !observers.isEmpty()) {
             return;
         }
+        main.removeCallbacks(retry);
+        main.removeCallbacks(relisten);
         worker.execute(this::stopListening);
     }
 
@@ -227,12 +455,19 @@ public final class Cloud {
             synchronized (Cloud.this) {
                 syncQueued = false;
             }
+            boolean succeeded = false;
+            syncing = true;
+            notifyStatus();
             try {
-                engine.sync();
+                succeeded = engine.sync();
             } catch (RuntimeException e) {
                 Log.w(TAG, "Synchronisation failed", e);
                 notice("Synchronisation stopped: " + e.getMessage());
+            } finally {
+                syncing = false;
             }
+            scheduleRetry(succeeded);
+            notifyStatus();
             // Screens are told only when there is something to say: a save that went
             // through quietly must not redraw the screen the person is typing on.
             boolean something;
@@ -247,7 +482,19 @@ public final class Cloud {
 
     /** Waits. One exchange right now, for the "Synchronise now" button. */
     public boolean syncNow() {
-        boolean ok = engine.sync();
+        if (!isConnected()) {
+            lastConnectAttempt = 0;
+            connectQuietly();
+        }
+        syncing = true;
+        notifyStatus();
+        boolean ok;
+        try {
+            ok = engine.sync();
+        } finally {
+            syncing = false;
+        }
+        scheduleRetry(ok);
         notifyObservers();
         return ok;
     }
@@ -261,7 +508,7 @@ public final class Cloud {
                 worker.execute(() -> {
                     try {
                         engine.applyRemote(changes);
-                        followCoachSports();
+                        followAccount();
                     } catch (RuntimeException e) {
                         Log.w(TAG, "Applying server changes failed", e);
                     }
@@ -270,10 +517,15 @@ public final class Cloud {
 
             @Override
             public void onError(String message) {
-                notice(message);
-                notifyObservers();
+                // A listener that failed has stopped. Say so on the status screen (not in
+                // a pop-up every time) and start it again in half a minute.
+                listenerProblem = message;
+                notifyStatus();
+                main.removeCallbacks(relisten);
+                main.postDelayed(relisten, 30_000);
             }
         });
+        listenerProblem = "";
         FirebaseUser user = auth.getCurrentUser();
         if (user != null) {
             final long device = engine.deviceId();
@@ -339,29 +591,39 @@ public final class Cloud {
     }
 
     /**
-     * A Coach reads the private rows of the assigned sports only. When Faculty changes
-     * the assignment, what this device asks the server for has to change with it, and
-     * the rows of a newly assigned sport have to be fetched from the beginning.
+     * What this device may read depends on the signed-in account: its role, its branch
+     * (Branch CR) and its sports (Coach). When another device changes any of these, what
+     * this device asks the server for changes with it, and rows that have just become
+     * visible are fetched from the beginning.
      */
-    private void followCoachSports() {
+    private void followAccount() {
         FirestoreRemoteStore.Scope current = store.scope();
-        if (current == null || !Role.COACH.equals(current.role)) {
-            return;
+        if (current == null || current.uid == null) {
+            return; // nobody signed in: the public rows, which never change scope
         }
         String userId = app.getSharedPreferences("flavium_cloud", Context.MODE_PRIVATE)
                 .getString("user_id", null);
         User user = userId == null ? null : repo.getUser(userId);
-        if (user == null || (user.coachSportIds.containsAll(current.sportIds)
-                && current.sportIds.containsAll(user.coachSportIds))) {
+        boolean usable = user != null && user.active;
+        String role = usable ? user.role : null;
+        String branch = usable ? user.branchId : null;
+        List<String> sports = usable ? user.coachSportIds : new ArrayList<>();
+        if (same(role, current.role) && same(branch, current.branchId)
+                && sports.containsAll(current.sportIds) && current.sportIds.containsAll(sports)) {
             return;
         }
         applyScope(user);
         try {
             engine.reloadAll();
         } catch (ArenaException e) {
-            Log.w(TAG, "Reloading after a change of sports failed: " + e.getMessage());
+            Log.w(TAG, "Reloading after a change of the account failed: " + e.getMessage());
         }
         startListening();
+        notifyObservers();
+    }
+
+    private static boolean same(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
     private void rememberUser(String userId) {
@@ -379,9 +641,12 @@ public final class Cloud {
     }
 
     /**
-     * Waits. FIRST DEVICE: uploads this device's festival, after Faculty has confirmed
-     * it. Creates (or signs in to) the Faculty's online account with the given password,
-     * reserves the server, and uploads. Can be repeated after an interruption.
+     * Waits. ONE-TIME SET-UP of online sync for the whole festival, while nothing is
+     * online yet: this device's festival becomes the online one, after Faculty has
+     * confirmed it. Creates (or signs in to) the Faculty's online account with the given
+     * password, reserves the server, and copies the data up. If it is interrupted it
+     * continues by itself the next time the app is opened. Every other device then
+     * connects on its own; this one is not special afterwards.
      */
     public void uploadFestival(User faculty, String password) {
         if (faculty == null || !Role.FACULTY.equals(faculty.role)) {
@@ -402,23 +667,18 @@ public final class Cloud {
         await(sessionDoc(uid).set(session));
         rememberUser(faculty.id);
         engine.uploadAsFestival();
+        connection = SyncEngine.Connection.CONNECTED;
         startListening();
         notifyObservers();
     }
 
     /**
-     * Waits. EVERY OTHER DEVICE: replaces this device's festival data with the shared
-     * one, after the person has confirmed it. A copy of the local database is kept
-     * first and returned; if the copy fails, nothing is replaced.
+     * Waits. Only for a device that holds festival data of its own while the festival is
+     * online (LOCAL_DATA_IN_THE_WAY), after the person decided to use the online one. A
+     * new installation never needs this: it connects by itself.
      */
-    public File joinFestival() {
-        File backup = LocalBackup.copy(app, RepositoryProvider.database(app));
-        auth.signOut();
-        applyScope(null);
-        engine.joinFestival();
-        startListening();
-        notifyObservers();
-        return backup;
+    public void useOnlineFestival() {
+        connect(true);
     }
 
     // =====================================================================

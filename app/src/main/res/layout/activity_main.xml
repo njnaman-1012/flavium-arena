@@ -7,6 +7,20 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
+    <!-- Shown only while a connected device is offline or still sending changes. -->
+    <TextView
+        android:id="@+id/tvSyncBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/banner_background"
+        android:paddingStart="16dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="8dp"
+        android:textColor="@color/banner_text"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
     <FrameLayout
         android:id="@+id/fragmentContainer"
         android:layout_width="match_parent"

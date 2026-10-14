@@ -2,6 +2,7 @@ package com.example.flaviumarena.ui.main;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.widget.TextView;
 
 import androidx.fragment.app.Fragment;
 
@@ -9,6 +10,7 @@ import com.example.flaviumarena.ui.common.BaseFragment;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.auth.Session;
+import com.example.flaviumarena.cloud.Cloud;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 /**
@@ -50,6 +52,12 @@ public class MainActivity extends BaseActivity {
         }
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        showSyncState();
+    }
+
     /** Shared data changed: the tab that is showing loads it again. */
     @Override
     protected void refreshScreen() {
@@ -57,6 +65,46 @@ public class MainActivity extends BaseActivity {
             if (fragment instanceof BaseFragment) {
                 ((BaseFragment) fragment).reload();
             }
+        }
+        showSyncState();
+    }
+
+    @Override
+    public void onSyncStatusChanged() {
+        showSyncState();
+    }
+
+    /**
+     * A line above the tabs while a connected device is offline or has changes that
+     * have not reached the server yet. Hidden when everything is sent.
+     */
+    private void showSyncState() {
+        TextView banner = findViewById(R.id.tvSyncBanner);
+        if (banner == null) {
+            return;
+        }
+        Cloud cloud = Cloud.get(this);
+        if (!cloud.isConnected()) {
+            show(banner, false);
+            return;
+        }
+        int pending = cloud.status().pending;
+        String changes = pending == 1 ? "1 change" : pending + " changes";
+        String text;
+        if (!cloud.isOnline()) {
+            text = pending == 0
+                    ? "Offline. You can keep working; changes are sent when the connection returns."
+                    : "Offline. " + changes + " will be sent when the connection returns.";
+        } else if (pending > 0) {
+            text = cloud.status().lastError.isEmpty()
+                    ? "Sending " + changes + "..."
+                    : changes + " waiting: the server could not be reached. Trying again.";
+        } else {
+            text = null;
+        }
+        show(banner, text != null);
+        if (text != null) {
+            banner.setText(text);
         }
     }
 

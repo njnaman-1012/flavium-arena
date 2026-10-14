@@ -257,6 +257,83 @@ public class SyncInstrumentedTest {
     }
 
     @Test
+    public void aNewInstallationConnectsByItselfAndAnotherDevicesDataIsNeverReplacedUnasked() {
+        // Nothing online yet: a device just keeps working on its own.
+        FakeRemote nothingOnline = new FakeRemote();
+        DbHelper fresh = device(false);
+        SyncEngine freshSync = new SyncEngine(fresh, nothingOnline);
+        assertEquals(SyncEngine.Connection.NOT_SET_UP, freshSync.connect(false, null));
+        assertEquals(SyncEngine.LINK_NONE, freshSync.status().link);
+
+        // A new installation: it simply becomes part of the online festival.
+        DbHelper helperC = device(false);
+        SyncEngine syncC = new SyncEngine(helperC, server);
+        assertFalse(syncC.hasLocalFestival());
+        final boolean[] asked = {false};
+        assertEquals(SyncEngine.Connection.CONNECTED, syncC.connect(false, () -> asked[0] = true));
+        assertTrue(asked[0]);
+        assertEquals(SyncEngine.LINK_CONNECTED, syncC.status().link);
+        assertEquals(count(helperA, "matches"), count(helperC, "matches"));
+        // Connecting again changes nothing.
+        assertEquals(SyncEngine.Connection.CONNECTED, syncC.connect(false, () -> {
+            throw new AssertionError("Not joined twice");
+        }));
+
+        // A device with a festival of its own is not touched until someone decides.
+        DbHelper helperD = device(true);
+        SyncEngine syncD = new SyncEngine(helperD, server);
+        // Its own festival: the same sample data as A's, but with ids of its own.
+        Match ownMatch = new SqliteArenaRepository(helperD).getMatch(DatabaseUtils.stringForQuery(
+                helperD.getReadableDatabase(), "SELECT id FROM matches LIMIT 1", null));
+        assertNull("Not A's record", repoA.getMatch(ownMatch.id));
+        assertEquals(SyncEngine.Connection.LOCAL_DATA_IN_THE_WAY, syncD.connect(false, () -> {
+            throw new AssertionError("Must not replace");
+        }));
+        assertEquals(SyncEngine.LINK_NONE, syncD.status().link);
+        assertNotNull(new SqliteArenaRepository(helperD).getMatch(ownMatch.id));
+        // If keeping a copy fails, nothing is replaced.
+        try {
+            syncD.connect(true, () -> {
+                throw new SyncException("no space for the copy");
+            });
+            fail("The copy failed");
+        } catch (SyncException expected) {
+            // correct
+        }
+        assertNotNull(new SqliteArenaRepository(helperD).getMatch(ownMatch.id));
+        // Decided: the online festival replaces it.
+        assertEquals(SyncEngine.Connection.CONNECTED, syncD.connect(true, null));
+        assertNull(new SqliteArenaRepository(helperD).getMatch(ownMatch.id));
+        assertEquals(count(helperA, "matches"), count(helperD, "matches"));
+
+        // From now on every device works on the same festival, in both directions.
+        Match live = liveMatch(repoA);
+        score(repoA, coreA, live.id, 6, 1);
+        syncA.sync();
+        syncC.sync();
+        syncD.sync();
+        assertEquals(Integer.valueOf(6), new SqliteArenaRepository(helperC).getMatch(live.id).scoreA);
+        assertEquals(Integer.valueOf(6), new SqliteArenaRepository(helperD).getMatch(live.id).scoreA);
+
+        // The device that set up online sync reports itself as unfinished until it is.
+        FakeRemote setUp = new FakeRemote();
+        setUp.dropAfter = 3;
+        DbHelper uploader = device(true);
+        SyncEngine uploaderSync = new SyncEngine(uploader, setUp);
+        try {
+            uploaderSync.uploadAsFestival();
+            fail("The connection was lost");
+        } catch (RemoteStore.Unavailable expected) {
+            // correct
+        }
+        assertEquals(SyncEngine.Connection.SETTING_UP, uploaderSync.connect(false, null));
+        fresh.close();
+        helperC.close();
+        helperD.close();
+        uploader.close();
+    }
+
+    @Test
     public void anInterruptedUploadContinuesWithoutSendingAnythingTwice() {
         FakeRemote empty = new FakeRemote();
         DbHelper first = device(true);

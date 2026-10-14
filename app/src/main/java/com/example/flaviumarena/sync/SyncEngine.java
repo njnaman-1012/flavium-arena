@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Keeps the local database and the shared server the same.
@@ -40,6 +41,21 @@ public class SyncEngine {
     /** Connected: local changes are queued and sent, server changes are applied. */
     public static final int LINK_CONNECTED = 2;
 
+    /** What connect() found. */
+    public enum Connection {
+        /** This device shares the online festival; changes travel both ways by themselves. */
+        CONNECTED,
+        /** Nothing is online yet: online sync has to be set up once, by Faculty. */
+        NOT_SET_UP,
+        /**
+         * The online festival exists, but this device holds festival data of its own that
+         * is not online. It is never replaced without the person deciding it.
+         */
+        LOCAL_DATA_IN_THE_WAY,
+        /** This device is setting up online sync and has not finished. */
+        SETTING_UP
+    }
+
     /** Told after server changes were written locally, with the tables they touched. */
     public interface Listener {
         void onRemoteChanges(Set<String> tables);
@@ -61,6 +77,8 @@ public class SyncEngine {
     private String lastError = "";
     /** Things the person should be told: conflicts, refusals, rows that could not be applied. */
     private final List<String> notices = new ArrayList<>();
+    /** See lastReceived(). Kept in memory only, for the screens that are open. */
+    private final Map<String, Long> received = new ConcurrentHashMap<>();
 
     public SyncEngine(SQLiteOpenHelper helper, RemoteStore remote) {
         this.helper = helper;
@@ -88,12 +106,55 @@ public class SyncEngine {
         return status;
     }
 
-    /** True when this device holds festival data of its own (more than empty tables). */
+    /**
+     * True when this device holds festival data of its own: sports, registrations,
+     * fixtures or accounts. A new installation has none (only sample branches).
+     */
     public boolean hasLocalFestival() {
         SQLiteDatabase db = helper.getReadableDatabase();
         return DatabaseUtils.queryNumEntries(db, "sports") > 0
                 || DatabaseUtils.queryNumEntries(db, "registrations") > 0
-                || DatabaseUtils.queryNumEntries(db, "matches") > 0;
+                || DatabaseUtils.queryNumEntries(db, "matches") > 0
+                || DatabaseUtils.queryNumEntries(db, "users") > 0;
+    }
+
+    /**
+     * Connects this device to the online festival, without anyone pressing anything.
+     * This is how every device becomes part of the festival: there is no "main" device.
+     *
+     *   already connected          nothing to do
+     *   nothing online yet         NOT_SET_UP: the device keeps working on its own data
+     *   festival online, and this
+     *   device has no data of its
+     *   own (a new installation)   it takes the online festival and is connected
+     *   festival online, and this
+     *   device has data of its own LOCAL_DATA_IN_THE_WAY, unless replaceLocalData is
+     *                              true (the person decided it): then that data is
+     *                              replaced by the online festival
+     *
+     * beforeJoining runs just before local data is replaced (to keep a copy of it); if
+     * it throws, nothing is replaced. Needs the network: RemoteStore.Unavailable when
+     * the server cannot be reached, and the device stays as it was.
+     */
+    public Connection connect(boolean replaceLocalData, Runnable beforeJoining) {
+        long link = state(SyncSchema.STATE_LINK);
+        if (link == LINK_CONNECTED) {
+            return Connection.CONNECTED;
+        }
+        if (link == LINK_UPLOADING) {
+            return Connection.SETTING_UP;
+        }
+        if (!remote.dataset().ready) {
+            return Connection.NOT_SET_UP;
+        }
+        if (hasLocalFestival() && !replaceLocalData) {
+            return Connection.LOCAL_DATA_IN_THE_WAY;
+        }
+        if (beforeJoining != null) {
+            beforeJoining.run();
+        }
+        joinFestival();
+        return Connection.CONNECTED;
     }
 
     /**
@@ -423,6 +484,18 @@ public class SyncEngine {
         return changes.size();
     }
 
+    /**
+     * The revision of the last version of a row that arrived FROM the server while the
+     * app has been running (another device's change, or the server's copy replacing a
+     * change of this device that was not accepted); 0 when none arrived. This device's
+     * own changes do not count, so an edit screen can compare it to notice that
+     * somebody else changed the record it shows.
+     */
+    public long lastReceived(String table, String key) {
+        Long rev = received.get(table + ":" + key);
+        return rev == null ? 0 : rev;
+    }
+
     /** The highest server revision this device has applied; listeners start after it. */
     public long cursor() {
         return state(SyncSchema.STATE_CURSOR);
@@ -485,6 +558,22 @@ public class SyncEngine {
             // it go too.
             boolean unsent = DatabaseUtils.queryNumEntries(db, "sync_outbox",
                     "table_name = ? AND row_key = ?", new String[]{change.table, change.key}) > 0;
+            if (unsent && change.complete && readLocal(change.table, change.key)
+                    .sameContentAs(change)) {
+                // The server already holds exactly what is waiting here (this device's own
+                // change coming back, or the same edit made elsewhere): it is confirmed,
+                // not overwritten, and nothing that belongs to it is dropped.
+                db.beginTransaction();
+                try {
+                    setRev(db, change.table, change.key, change.rev, true);
+                    db.delete("sync_outbox", "table_name = ? AND row_key = ?",
+                            new String[]{change.table, change.key});
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+                continue;
+            }
             if (unsent) {
                 dropQueuedDependents(change.table, change.key);
             }
@@ -516,6 +605,7 @@ public class SyncEngine {
 
     /** Writes one server row (or removal) without the triggers queuing it again. */
     private void write(SQLiteDatabase db, Change change) {
+        received.put(change.table + ":" + change.key, change.rev);
         long capture = state(SyncSchema.STATE_CAPTURE);
         setState(db, SyncSchema.STATE_CAPTURE, 0);
         try {

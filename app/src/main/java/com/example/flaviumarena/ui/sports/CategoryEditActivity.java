@@ -54,6 +54,7 @@ public class CategoryEditActivity extends BaseActivity {
             category.rules = "";
         } else {
             category = repo.getCategory(categoryId);
+            watchRecord("categories", categoryId);
         }
         Sport sport = category == null ? null : repo.getSport(category.sportId);
         if (sport == null) {
@@ -81,7 +82,7 @@ public class CategoryEditActivity extends BaseActivity {
         }
         form = new RuleForm(this, rulesContainer, template.fields, values);
 
-        findViewById(R.id.btnSaveCategory).setOnClickListener(v -> save());
+        findViewById(R.id.btnSaveCategory).setOnClickListener(v -> saveCarefully(this::save));
     }
 
     /**

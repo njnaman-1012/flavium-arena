@@ -86,6 +86,7 @@ public class RegistrationEditActivity extends BaseActivity {
                 finish();
                 return;
             }
+            watchRecord("registrations", registrationId);
             canEditAll = AccessControl.canEditRegistration(userIn(category.sportId), registration);
         }
         if (!canEditAll && !AccessControl.canSetLogo(userIn(category.sportId), registration)) {
@@ -118,11 +119,11 @@ public class RegistrationEditActivity extends BaseActivity {
         showStatus();
 
         findViewById(R.id.btnPickLogo).setOnClickListener(v -> pickLogo.launch("image/*"));
-        findViewById(R.id.btnSaveReg).setOnClickListener(v -> save());
+        findViewById(R.id.btnSaveReg).setOnClickListener(v -> saveCarefully(this::save));
         findViewById(R.id.btnApprove).setOnClickListener(v ->
-                setStatus(Registration.STATUS_APPROVED));
+                saveCarefully(() -> setStatus(Registration.STATUS_APPROVED)));
         findViewById(R.id.btnReject).setOnClickListener(v ->
-                setStatus(Registration.STATUS_REJECTED));
+                saveCarefully(() -> setStatus(Registration.STATUS_REJECTED)));
         findViewById(R.id.btnDeleteReg).setOnClickListener(v ->
                 confirm("Delete this registration?", () -> {
                     if (attempt(() -> repo.deleteRegistration(currentUser, registration.id))) {

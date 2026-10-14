@@ -58,6 +58,7 @@ public class FixtureEditActivity extends BaseActivity {
                 finish();
                 return;
             }
+            watchRecord("matches", matchId);
         }
 
         // Only approved registrations can play. Only a Core may load the Asoo Core list.

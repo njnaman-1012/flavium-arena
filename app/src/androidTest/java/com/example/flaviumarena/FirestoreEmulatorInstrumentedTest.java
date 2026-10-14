@@ -21,15 +21,19 @@ import com.example.flaviumarena.data.DbHelper;
 import com.example.flaviumarena.data.DevData;
 import com.example.flaviumarena.data.SqliteArenaRepository;
 import com.example.flaviumarena.model.Category;
+import com.example.flaviumarena.model.EventRound;
 import com.example.flaviumarena.model.Match;
 import com.example.flaviumarena.model.Registration;
 import com.example.flaviumarena.model.Role;
+import com.example.flaviumarena.model.RuleSet;
 import com.example.flaviumarena.model.Sport;
+import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.model.User;
 import com.example.flaviumarena.sync.Change;
 import com.example.flaviumarena.sync.PublicView;
 import com.example.flaviumarena.sync.RemoteStore;
 import com.example.flaviumarena.sync.SyncEngine;
+import com.example.flaviumarena.util.DateUtil;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
 import com.google.firebase.FirebaseApp;
@@ -139,6 +143,11 @@ public class FirestoreEmulatorInstrumentedTest {
         }
         d.firestore = FirebaseFirestore.getInstance(app);
         d.auth = FirebaseAuth.getInstance(app);
+        try {
+            Tasks.await(d.firestore.enableNetwork());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
         d.auth.signOut();
         d.helper = new DbHelper(context, null, withFestival);
         d.repo = new SqliteArenaRepository(d.helper);
@@ -1170,5 +1179,461 @@ public class FirestoreEmulatorInstrumentedTest {
         a.repo.setCoachSports(facultyA, coachId, Arrays.asList(football));
         assertTrue(a.sync.sync());
         refused(() -> coach.store.changesSince(0));
+    }
+
+    // =====================================================================
+    // Continuous synchronisation: offline, reconnecting, restarts
+    // =====================================================================
+
+    /**
+     * Every shared row of a table as text, in key order, without the columns that never
+     * leave a device. Two devices that share the festival must give the same text.
+     */
+    private String dump(Device d, String table) {
+        StringBuilder text = new StringBuilder();
+        String order = "settings".equals(table) ? "name"
+                : "coach_sports".equals(table) ? "user_id, sport_id" : "id";
+        android.database.Cursor c = d.helper.getReadableDatabase().rawQuery(
+                "SELECT * FROM " + table + " ORDER BY " + order, null);
+        try {
+            while (c.moveToNext()) {
+                for (int i = 0; i < c.getColumnCount(); i++) {
+                    String column = c.getColumnName(i);
+                    if (com.example.flaviumarena.sync.SyncSchema.isLocalOnly(table, column)) {
+                        continue;
+                    }
+                    text.append(column).append('=').append(c.isNull(i) ? "null" : c.getString(i))
+                            .append(';');
+                }
+                text.append('\n');
+            }
+        } finally {
+            c.close();
+        }
+        return text.toString();
+    }
+
+    /** The same festival on both devices, table by table. */
+    private void assertSameFestival(Device x, Device y, String... except) {
+        List<String> skip = Arrays.asList(except);
+        for (String table : com.example.flaviumarena.sync.SyncSchema.TABLES) {
+            if (!skip.contains(table)) {
+                assertEquals("Table " + table, dump(x, table), dump(y, table));
+            }
+        }
+    }
+
+    /** A local row as the engine would send it. */
+    private Change localChange(Device d, String table, String key) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        android.database.Cursor c = d.helper.getReadableDatabase().rawQuery(
+                "SELECT * FROM " + table + " WHERE id = ?", new String[]{key});
+        try {
+            assertTrue(c.moveToFirst());
+            for (int i = 0; i < c.getColumnCount(); i++) {
+                switch (c.getType(i)) {
+                    case android.database.Cursor.FIELD_TYPE_NULL:
+                        values.put(c.getColumnName(i), null);
+                        break;
+                    case android.database.Cursor.FIELD_TYPE_INTEGER:
+                        values.put(c.getColumnName(i), c.getLong(i));
+                        break;
+                    default:
+                        values.put(c.getColumnName(i), c.getString(i));
+                }
+            }
+        } finally {
+            c.close();
+        }
+        Change change = new Change(table, key, false, values);
+        Change server = d.store.get(table, key);
+        change.branch = server.branch;
+        change.sport = server.sport;
+        return change;
+    }
+
+    @Test
+    public void bothDevicesWorkOfflineAndEverythingConvergesWhenTheyReconnect() throws Exception {
+        Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        User coreUser = localUser(core, userId(DevData.CORE_EMAIL), Role.CORE);
+        Match live = liveMatch(a);
+        String pendingId = one("SELECT id FROM registrations WHERE status = 'PENDING' LIMIT 1");
+        String teamA = one("SELECT id FROM registrations WHERE category_id = ? "
+                + "AND status = 'APPROVED' ORDER BY id LIMIT 1", sevens.id);
+        String teamB = one("SELECT id FROM registrations WHERE category_id = ? "
+                + "AND status = 'APPROVED' AND id <> ? ORDER BY id LIMIT 1", sevens.id, teamA);
+
+        // Both lose the connection.
+        Tasks.await(a.firestore.disableNetwork());
+        Tasks.await(core.firestore.disableNetwork());
+
+        // Device A changes a score; device B edits a registration and adds a fixture.
+        a.repo.updateScore(facultyA, live.id, live.version, 3, 1, "", Match.STATUS_LIVE);
+        Registration edited = core.repo.getRegistration(coreUser, pendingId);
+        edited.contactName = "Changed while offline";
+        core.repo.saveRegistration(coreUser, edited);
+        Match fixture = new Match();
+        fixture.categoryId = sevens.id;
+        fixture.teamAId = teamA;
+        fixture.teamBId = teamB;
+        fixture.date = "2026-12-01";
+        fixture.time = "09:00";
+        fixture.venue = "Offline Ground";
+        fixture.round = "Friendly";
+        String fixtureId = core.repo.saveFixture(coreUser, fixture);
+
+        // Nothing is lost and nothing is sent.
+        assertFalse(a.sync.sync());
+        assertFalse(core.sync.sync());
+        assertTrue(a.sync.pendingCount() > 0);
+        assertTrue(core.sync.pendingCount() > 0);
+        assertEquals(Integer.valueOf(3), a.repo.getMatch(live.id).scoreA);
+        assertEquals("Offline Ground", core.repo.getMatch(fixtureId).venue);
+        assertNull("Device A has not heard of it", a.repo.getMatch(fixtureId));
+
+        // The connection returns: the queues go out by themselves on the next exchange.
+        Tasks.await(a.firestore.enableNetwork());
+        Tasks.await(core.firestore.enableNetwork());
+        assertTrue(a.sync.sync());
+        assertTrue(core.sync.sync());
+        assertTrue(a.sync.sync());
+        assertEquals(0, a.sync.pendingCount());
+        assertEquals(0, core.sync.pendingCount());
+        assertTrue(String.valueOf(a.sync.takeNotices()), a.sync.takeNotices().isEmpty());
+        assertTrue(String.valueOf(core.sync.takeNotices()), core.sync.takeNotices().isEmpty());
+
+        // Each device has the other's work, and nothing twice.
+        assertEquals("Offline Ground", a.repo.getMatch(fixtureId).venue);
+        assertEquals("Changed while offline",
+                a.repo.getRegistration(facultyA, pendingId).contactName);
+        assertEquals(Integer.valueOf(3), core.repo.getMatch(live.id).scoreA);
+        assertEquals(1, count(a, "matches", "venue = 'Offline Ground'"));
+        // A Core may not read the administrative log; everything else is identical.
+        assertSameFestival(a, core, "admin_audit");
+        assertEquals(a.repo.getStandings(sevens.id).get(0).name,
+                core.repo.getStandings(sevens.id).get(0).name);
+    }
+
+    @Test
+    public void aLostAcknowledgementNeverWritesAChangeTwice() throws Exception {
+        String id = one("SELECT id FROM registrations WHERE status = 'PENDING' LIMIT 1");
+        Registration r = a.repo.getRegistration(facultyA, id);
+        r.contactName = "Sent once";
+        a.repo.saveRegistration(facultyA, r);
+        assertEquals(1, a.sync.pendingCount());
+
+        // The change reaches the server, but the answer never reaches the device.
+        Change sent = localChange(a, "registrations", id);
+        long serverRev = a.store.push(sent, a.store.get("registrations", id).rev);
+
+        // The device tries again: the server already has exactly this, so nothing is
+        // written a second time and nobody is told about a conflict.
+        assertTrue(a.sync.sync());
+        assertEquals(0, a.sync.pendingCount());
+        assertTrue(String.valueOf(a.sync.takeNotices()), a.sync.takeNotices().isEmpty());
+        assertEquals(serverRev, a.store.get("registrations", id).rev);
+        assertEquals("Sent once", a.store.get("registrations", id).values.get("contact_name"));
+    }
+
+    @Test
+    public void changesWaitingWhenTheAppIsClosedAreSentAfterItIsOpenedAgain() throws Exception {
+        String name = "restart-test.db";
+        context.deleteDatabase(name);
+        // A device whose database is a file, so it survives being closed.
+        Device core = device("device-b", false);
+        core.helper.close();
+        core.helper = new DbHelper(context, name, false);
+        core.repo = new SqliteArenaRepository(core.helper);
+        core.store = new FirestoreRemoteStore(core.firestore,
+                new SyncEngine(core.helper, null).deviceId());
+        core.sync = new SyncEngine(core.helper, core.store);
+        try {
+            signUp(core, DevData.CORE_EMAIL);
+            link(core, userId(DevData.CORE_EMAIL), Role.CORE, null);
+            core.sync.joinFestival();
+            User coreUser = localUser(core, userId(DevData.CORE_EMAIL), Role.CORE);
+
+            // Offline, a change is made, and the app is closed.
+            Tasks.await(core.firestore.disableNetwork());
+            Match live = liveMatch(core);
+            core.repo.updateScore(coreUser, live.id, live.version, 7, 7, "", Match.STATUS_LIVE);
+            assertFalse(core.sync.sync());
+            long device = core.sync.deviceId();
+            core.helper.close();
+
+            // Opened again: the change is still waiting, and goes out when it can.
+            core.helper = new DbHelper(context, name, false);
+            core.repo = new SqliteArenaRepository(core.helper);
+            core.sync = new SyncEngine(core.helper, core.store);
+            assertEquals("Same installation", device, core.sync.deviceId());
+            assertTrue(core.sync.pendingCount() > 0);
+            Tasks.await(core.firestore.enableNetwork());
+            assertTrue(core.sync.sync());
+            assertEquals(0, core.sync.pendingCount());
+            a.sync.pull();
+            assertEquals(Integer.valueOf(7), a.repo.getMatch(live.id).scoreA);
+            assertEquals(a.repo.getScoreAudit(facultyA, live.id).size(),
+                    core.repo.getScoreAudit(coreUser, live.id).size());
+        } finally {
+            Tasks.await(core.firestore.enableNetwork());
+            core.helper.close();
+            context.deleteDatabase(name);
+        }
+    }
+
+    @Test
+    public void throwsScoredByTheAsooCoreReachFacultyAndTheMedalsAgree() throws Exception {
+        final Device asoo = join("device-asoo", DevData.ASOO_EMAIL, Role.ASOO_CORE, null);
+        String asooId = userId(DevData.ASOO_EMAIL);
+        User asooUser = localUser(asoo, asooId, Role.ASOO_CORE);
+
+        // Faculty sets up a shot put final on device A and assigns it to the Asoo Core.
+        SportTemplate template = a.repo.getTemplate("athletics");
+        String sportId = null;
+        for (Sport s : a.repo.getSports()) {
+            if (s.name.equals(template.name)) {
+                sportId = s.id;
+            }
+        }
+        if (sportId == null) {
+            sportId = a.repo.addSportFromTemplate(facultyA, "athletics", null, null);
+        }
+        RuleSet rules = template.defaults();
+        rules.put(RuleSet.ENGINE, SportTemplate.ENGINE_MEASURED);
+        rules.put("event_kind", "Throw");
+        rules.put("attempts", "2");
+        rules.put("finalists", "1");
+        rules.put("extra_attempts", "0");
+        Category shot = new Category();
+        shot.sportId = sportId;
+        shot.name = "Shot Put Sync";
+        shot.deadline = "";
+        shot.rules = rules.toText();
+        String categoryId = a.repo.saveCategory(facultyA, shot);
+        List<com.example.flaviumarena.model.Branch> branches = a.repo.getBranches();
+        String[] athletes = new String[2];
+        for (int i = 0; i < 2; i++) {
+            Registration r = new Registration();
+            r.categoryId = categoryId;
+            r.branchId = branches.get(i).id;
+            r.year = 1;
+            r.name = "Thrower " + i;
+            r.contactName = "Contact";
+            r.members = "";
+            athletes[i] = a.repo.saveRegistration(facultyA, r);
+            a.repo.setRegistrationStatus(facultyA, athletes[i], Registration.STATUS_APPROVED);
+        }
+        EventRound round = new EventRound();
+        round.categoryId = categoryId;
+        round.stage = EventRound.STAGE_FINAL;
+        round.heatNumber = 0;
+        round.date = DateUtil.today();
+        round.time = "10:00";
+        round.venue = "Throwing circle";
+        round.assignedTo = asooId;
+        String roundId = a.repo.saveRound(facultyA, round);
+        String x = a.repo.addEntry(facultyA, roundId, athletes[0], 0);
+        String y = a.repo.addEntry(facultyA, roundId, athletes[1], 0);
+        assertTrue(a.sync.sync());
+
+        // The Asoo Core scores it on their own device.
+        asoo.sync.pull();
+        asoo.repo.setRoundStatus(asooUser, roundId, asoo.repo.getRound(roundId).version,
+                Match.STATUS_LIVE);
+        int[][] throwsCm = {{1210, 1300}, {1250, 0}};
+        String[] entries = {x, y};
+        for (int i = 0; i < 2; i++) {
+            for (int n = 0; n < 2; n++) {
+                int cm = throwsCm[i][n];
+                asoo.repo.saveAttempt(asooUser, entries[i], asoo.repo.getRound(roundId).version,
+                        n + 1, cm == 0 ? null : cm, cm == 0);
+            }
+        }
+        asoo.repo.setRoundStatus(asooUser, roundId, asoo.repo.getRound(roundId).version,
+                Match.STATUS_COMPLETED);
+        assertTrue(asoo.sync.sync());
+        assertTrue(String.valueOf(asoo.sync.takeNotices()), asoo.sync.takeNotices().isEmpty());
+        assertEquals(0, asoo.sync.pendingCount());
+
+        // Faculty sees every attempt and makes the result official.
+        a.sync.pull();
+        assertEquals(dump(asoo, "event_attempts"), dump(a, "event_attempts"));
+        assertEquals(dump(asoo, "event_entries"), dump(a, "event_entries"));
+        a.repo.finaliseRound(facultyA, roundId, a.repo.getRound(roundId).version);
+        assertTrue(a.sync.sync());
+        asoo.sync.pull();
+        assertTrue(asoo.repo.getRound(roundId).isFinal);
+
+        // Medals are worked out on each device from the same results, and agree.
+        List<com.example.flaviumarena.model.MedalRow> onA = a.repo.getMedalTable();
+        List<com.example.flaviumarena.model.MedalRow> onAsoo = asoo.repo.getMedalTable();
+        assertFalse(onA.isEmpty());
+        assertEquals(onA.size(), onAsoo.size());
+        for (int i = 0; i < onA.size(); i++) {
+            assertEquals(onA.get(i).branchId, onAsoo.get(i).branchId);
+            assertEquals(onA.get(i).gold, onAsoo.get(i).gold);
+            assertEquals(onA.get(i).silver, onAsoo.get(i).silver);
+            assertEquals(onA.get(i).bronze, onAsoo.get(i).bronze);
+        }
+        // The official result cannot be changed by the Asoo Core any more, even directly.
+        final Change late = edited("event_attempts", one("SELECT id FROM event_attempts "
+                + "WHERE entry_id = ? LIMIT 1", x), "distance_cm", 2000L);
+        refused(() -> asoo.store.push(late, late.rev));
+    }
+
+    // =====================================================================
+    // Every device connected at once, changes flowing both ways by themselves
+    // =====================================================================
+
+    /** Applies whatever the listener delivers, the way the app does, and counts it. */
+    private ListenerRegistration live(final Device d, final CountDownLatch... arrivals) {
+        return d.store.listen(d.sync.cursor(), new FirestoreRemoteStore.ChangeSink() {
+            @Override
+            public void onChanges(List<Change> changes) {
+                synchronized (d) {
+                    d.sync.applyRemote(changes);
+                }
+                for (CountDownLatch arrival : arrivals) {
+                    arrival.countDown();
+                }
+            }
+
+            @Override
+            public void onError(String message) {
+            }
+        });
+    }
+
+    /** Sends what a device has waiting, never at the same time as it applies changes. */
+    private void send(Device d) {
+        synchronized (d) {
+            d.sync.pushPending();
+        }
+    }
+
+    /** Waits until a condition holds on a device, as a listener updates it. */
+    private void eventually(String what, java.util.concurrent.Callable<Boolean> condition)
+            throws Exception {
+        long until = System.currentTimeMillis() + 20_000;
+        while (System.currentTimeMillis() < until) {
+            if (condition.call()) {
+                return;
+            }
+            Thread.sleep(200);
+        }
+        fail("Did not happen within 20 seconds: " + what);
+    }
+
+    @Test
+    public void aNewInstallationConnectsByItselfAndADeviceWithItsOwnDataIsAskedFirst()
+            throws Exception {
+        // A phone that was just installed: it becomes part of the festival without anyone
+        // pressing anything.
+        Device fresh = device("device-public", false);
+        assertEquals(SyncEngine.Connection.CONNECTED, fresh.sync.connect(false, null));
+        assertEquals(count(a, "matches", null), count(fresh, "matches", null));
+
+        // A phone that holds a festival of its own is left alone until someone decides.
+        Device own = device("device-b", true);
+        String ownSport = own.repo.getSports().get(0).id;
+        assertEquals(SyncEngine.Connection.LOCAL_DATA_IN_THE_WAY, own.sync.connect(false, () -> {
+            throw new AssertionError("Must not be replaced");
+        }));
+        assertNotNull(own.repo.getSport(ownSport));
+        assertEquals(SyncEngine.LINK_NONE, own.sync.status().link);
+        // Decided: it takes the online festival.
+        assertEquals(SyncEngine.Connection.CONNECTED, own.sync.connect(true, null));
+        assertEquals(count(a, "sports", null), count(own, "sports", null));
+        assertNull("Its own records were replaced, not mixed in", own.repo.getSport(ownSport));
+    }
+
+    @Test
+    public void twoDevicesWorkingAtTheSameTimeSeeEachOthersChangesWithoutAsking()
+            throws Exception {
+        final Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        final User coreUser = localUser(core, userId(DevData.CORE_EMAIL), Role.CORE);
+        final Match live = liveMatch(a);
+        final String pendingId = one("SELECT id FROM registrations WHERE status = 'PENDING' "
+                + "LIMIT 1");
+        ListenerRegistration onA = live(a);
+        ListenerRegistration onB = live(core);
+        try {
+            // At the same moment: A changes a score, B edits a registration.
+            a.repo.updateScore(facultyA, live.id, live.version, 5, 2, "", Match.STATUS_LIVE);
+            Registration r = core.repo.getRegistration(coreUser, pendingId);
+            r.contactName = "Edited on B";
+            core.repo.saveRegistration(coreUser, r);
+            Thread sendA = new Thread(() -> send(a));
+            Thread sendB = new Thread(() -> send(core));
+            sendA.start();
+            sendB.start();
+            sendA.join();
+            sendB.join();
+
+            // Each arrives on the other device through its listener; nobody pulls.
+            eventually("A's score on B", () -> {
+                Match m = core.repo.getMatch(live.id);
+                return m.scoreA != null && m.scoreA == 5;
+            });
+            eventually("B's edit on A", () -> "Edited on B".equals(
+                    a.repo.getRegistration(facultyA, pendingId).contactName));
+            assertEquals(0, a.sync.pendingCount());
+            assertEquals(0, core.sync.pendingCount());
+
+            // The other way round as well: B creates, A removes, both see both.
+            String teamA = one("SELECT id FROM registrations WHERE category_id = ? "
+                    + "AND status = 'APPROVED' ORDER BY id LIMIT 1", sevens.id);
+            String teamB = one("SELECT id FROM registrations WHERE category_id = ? "
+                    + "AND status = 'APPROVED' AND id <> ? ORDER BY id LIMIT 1", sevens.id, teamA);
+            Match fixture = new Match();
+            fixture.categoryId = sevens.id;
+            fixture.teamAId = teamA;
+            fixture.teamBId = teamB;
+            fixture.date = "2026-12-02";
+            fixture.time = "11:00";
+            fixture.venue = "Made on B";
+            fixture.round = "Friendly";
+            final String fixtureId = core.repo.saveFixture(coreUser, fixture);
+            send(core);
+            eventually("B's new fixture on A", () -> a.repo.getMatch(fixtureId) != null);
+            a.repo.deleteFixture(facultyA, fixtureId);
+            send(a);
+            eventually("A's removal on B", () -> core.repo.getMatch(fixtureId) == null);
+
+            // Both devices now hold exactly the same festival.
+            assertSameFestival(a, core, "admin_audit");
+        } finally {
+            onA.remove();
+            onB.remove();
+        }
+    }
+
+    @Test
+    public void aListenerThatLostTheConnectionCatchesUpWhenItReturns() throws Exception {
+        final Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        final Match live = liveMatch(a);
+        ListenerRegistration onB = live(core);
+        try {
+            Tasks.await(core.firestore.disableNetwork());
+            a.repo.updateScore(facultyA, live.id, live.version, 8, 0, "", Match.STATUS_LIVE);
+            assertTrue(a.sync.sync());
+            Thread.sleep(2000);
+            assertFalse("Nothing arrives while B is offline",
+                    Integer.valueOf(8).equals(core.repo.getMatch(live.id).scoreA));
+
+            // The connection returns: the same listener delivers what was missed.
+            Tasks.await(core.firestore.enableNetwork());
+            eventually("the missed score on B", () -> {
+                Match m = core.repo.getMatch(live.id);
+                return m.scoreA != null && m.scoreA == 8;
+            });
+            final User coreUser = localUser(core, userId(DevData.CORE_EMAIL), Role.CORE);
+            eventually("the missed history line on B", () ->
+                    a.repo.getScoreAudit(facultyA, live.id).size()
+                            == core.repo.getScoreAudit(coreUser, live.id).size());
+        } finally {
+            onB.remove();
+            Tasks.await(core.firestore.enableNetwork());
+        }
     }
 }

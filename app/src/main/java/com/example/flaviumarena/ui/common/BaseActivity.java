@@ -47,6 +47,7 @@ import com.example.flaviumarena.model.User;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -171,6 +172,45 @@ public abstract class BaseActivity extends AppCompatActivity implements Cloud.Ob
         cloud.onBackground();
     }
 
+    // ----- A record being edited on this screen -----
+
+    private String watchedTable;
+    private String watchedKey;
+    private long watchedRevision;
+    private boolean toldChangedElsewhere;
+
+    /**
+     * An edit screen calls this for the record it has opened. If another device changes
+     * that record while the screen is open, the person is told, and what they typed is
+     * left as it is: an edit screen reads its record once and is not reloaded.
+     */
+    protected void watchRecord(String table, String key) {
+        watchedTable = table;
+        watchedKey = key;
+        watchedRevision = key == null ? 0 : Cloud.get(this).lastReceived(table, key);
+        toldChangedElsewhere = false;
+    }
+
+    /** True when another device changed the watched record after this screen opened it. */
+    protected boolean watchedRecordChanged() {
+        return watchedTable != null && watchedKey != null
+                && Cloud.get(this).lastReceived(watchedTable, watchedKey) != watchedRevision;
+    }
+
+    /**
+     * Saves, but first asks when another device changed the record meanwhile, so a
+     * newer version is never replaced without the person deciding it.
+     */
+    protected void saveCarefully(Runnable save) {
+        if (!watchedRecordChanged()) {
+            save.run();
+            return;
+        }
+        showDialog("This record was changed on another device after you opened it. "
+                        + "Save your version anyway? It replaces the other change.",
+                R.drawable.ic_info, true, "Save mine", "Cancel", save);
+    }
+
     /**
      * Shared data, or the connection, changed while this screen is open: show the
      * latest, and anything the person should be told (a conflict, a refusal).
@@ -189,7 +229,12 @@ public abstract class BaseActivity extends AppCompatActivity implements Cloud.Ob
         }
         currentUser = Session.currentUser(this, repo);
         refreshScreen();
-        List<String> notices = cloud.takeNotices();
+        List<String> notices = new ArrayList<>(cloud.takeNotices());
+        if (!toldChangedElsewhere && watchedRecordChanged()) {
+            toldChangedElsewhere = true;
+            notices.add("This record was just changed on another device. What you typed "
+                    + "here is kept. Go back without saving to see the new version.");
+        }
         if (!notices.isEmpty()) {
             showMessage(TextUtils.join("\n\n", notices));
         }

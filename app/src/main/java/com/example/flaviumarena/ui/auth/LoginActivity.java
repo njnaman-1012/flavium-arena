@@ -12,6 +12,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.core.content.ContextCompat;
 
 import com.example.flaviumarena.cloud.Cloud;
+import com.example.flaviumarena.sync.SyncEngine;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.auth.Session;
@@ -190,6 +191,11 @@ public class LoginActivity extends BaseActivity {
      * An account has one live session at a time. When the account is already logged in
      * somewhere else the login is refused, and the person can choose to sign that other
      * session out, which runs this again with takeOver = true.
+     *
+     * When the festival is online, the device first connects to it (a new installation
+     * does so by itself) and the server checks the password: the same account then works
+     * on every device. Before online sync is set up, or without any connection on a
+     * device that never connected, the login uses this device's own accounts.
      */
     private void login(boolean takeOver) {
         final Cloud cloud = Cloud.get(this);
@@ -197,6 +203,21 @@ public class LoginActivity extends BaseActivity {
             loginOnline(cloud, takeOver);
             return;
         }
+        if (cloud.isConfigured()) {
+            runBusy("Connecting...", cloud::connectForLogin, connection -> {
+                if (connection == SyncEngine.Connection.CONNECTED) {
+                    loginOnline(cloud, takeOver);
+                } else {
+                    loginLocally(takeOver);
+                }
+            });
+            return;
+        }
+        loginLocally(takeOver);
+    }
+
+    /** The login checked against this device's own accounts. */
+    private void loginLocally(boolean takeOver) {
         try {
             User user = repo.login(textOf(etEmail), etPassword.getText().toString(),
                     chosenRole, Build.MODEL, takeOver);

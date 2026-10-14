@@ -17,14 +17,16 @@ import com.example.flaviumarena.ui.common.BaseActivity;
 import com.example.flaviumarena.util.DateUtil;
 
 /**
- * Online sharing. Shows whether this device is connected to the shared festival and
- * offers the two ways to connect it:
+ * Online sync. Shows whether this device is online, whether its changes have all been
+ * sent, and when it last synced. Devices connect to the online festival by themselves
+ * and keep in step without anyone pressing anything; this screen only reports it.
  *
- *   Upload   for the one device that holds the real data. Faculty only, once.
- *   Join     for every other device. Its own festival data is replaced by the shared
- *            one, after a copy of the local database has been kept.
- *
- * Both ask for confirmation first, because neither can be undone from the app.
+ * Two things can still be done here, each only in its own situation:
+ *   Set up online sync      once for the whole festival, by Faculty, while nothing is
+ *                           online yet: this device's data becomes the online festival
+ *   Use the online festival a device that holds festival data of its own, made before
+ *                           it was connected, switches to the online festival; its own
+ *                           data is never replaced without this decision
  */
 public class CloudActivity extends BaseActivity {
 
@@ -33,16 +35,16 @@ public class CloudActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setupScreen(R.layout.activity_cloud, "Online sharing", true);
+        setupScreen(R.layout.activity_cloud, "Online sync", true);
         cloud = Cloud.get(this);
 
-        findViewById(R.id.btnCloudSync).setOnClickListener(v ->
-                runBusy("Synchronising...", () -> cloud.syncNow(), ok -> {
-                    toast(ok ? "Up to date" : "The server could not be reached");
+        findViewById(R.id.btnSyncNow).setOnClickListener(v ->
+                runBusy("Syncing...", () -> cloud.syncNow(), ok -> {
+                    toast(ok ? "All changes synced" : "The server could not be reached");
                     refreshScreen();
                 }));
-        findViewById(R.id.btnCloudJoin).setOnClickListener(v -> confirmJoin());
-        findViewById(R.id.btnCloudUpload).setOnClickListener(v -> confirmUpload());
+        findViewById(R.id.btnSetUpSync).setOnClickListener(v -> confirmSetUp());
+        findViewById(R.id.btnUseOnline).setOnClickListener(v -> confirmUseOnline());
     }
 
     @Override
@@ -51,108 +53,153 @@ public class CloudActivity extends BaseActivity {
         refreshScreen();
     }
 
-    /** Shows the current state. Runs when the screen opens and when the state changes. */
+    @Override
+    public void onSyncStatusChanged() {
+        refreshScreen();
+    }
+
+    /** Shows the current state. Runs when the screen opens and whenever it changes. */
     @Override
     protected void refreshScreen() {
-        TextView tvStatus = findViewById(R.id.tvCloudStatus);
-        TextView tvHelp = findViewById(R.id.tvCloudHelp);
-        Button btnSync = findViewById(R.id.btnCloudSync);
-        Button btnJoin = findViewById(R.id.btnCloudJoin);
-        Button btnUpload = findViewById(R.id.btnCloudUpload);
-        show(btnSync, false);
-        show(btnJoin, false);
-        show(btnUpload, false);
+        TextView tvHeadline = findViewById(R.id.tvSyncHeadline);
+        TextView tvDetails = findViewById(R.id.tvSyncDetails);
+        TextView tvHelp = findViewById(R.id.tvSyncHelp);
+        Button btnSetUp = findViewById(R.id.btnSetUpSync);
+        Button btnUseOnline = findViewById(R.id.btnUseOnline);
+        Button btnSyncNow = findViewById(R.id.btnSyncNow);
+        show(btnSetUp, false);
+        show(btnUseOnline, false);
+        show(btnSyncNow, false);
 
         if (!cloud.isConfigured()) {
-            tvStatus.setText("Not available in this build.");
-            tvHelp.setText("This app was built without a Firebase configuration, so it keeps "
-                    + "its data on this device only. See the README for how to set it up.");
+            tvHeadline.setText("Online sync is not available");
+            tvDetails.setText("This app was built without a Firebase configuration.");
+            tvHelp.setText("It keeps its data on this device only. See the README for how "
+                    + "to set it up.");
             return;
         }
         SyncEngine.Status status = cloud.status();
         boolean faculty = AccessControl.isFaculty(currentUser);
-        if (status.link == SyncEngine.LINK_CONNECTED) {
-            StringBuilder text = new StringBuilder("Connected to the shared festival.");
-            text.append("\nChanges waiting to be sent: ").append(status.pending);
-            text.append("\nLast complete exchange: ").append(status.lastSync == 0 ? "not yet"
+        String connection = cloud.isOnline() ? "Online" : "Offline";
+        SyncEngine.Connection state = cloud.connection();
+
+        if (cloud.isConnected()) {
+            String headline;
+            if (!cloud.isOnline()) {
+                headline = "Offline";
+            } else if (cloud.isSyncing()) {
+                headline = "Syncing...";
+            } else if (status.pending > 0) {
+                headline = status.pending == 1 ? "1 change waiting"
+                        : status.pending + " changes waiting";
+            } else {
+                headline = "All changes synced";
+            }
+            tvHeadline.setText(headline);
+            StringBuilder details = new StringBuilder(connection);
+            details.append("\nWaiting to be sent: ").append(status.pending);
+            details.append("\nLast synced: ").append(status.lastSync == 0 ? "not yet"
                     : DateUtil.formatTimestamp(status.lastSync));
             if (!status.lastError.isEmpty()) {
-                text.append("\nLast problem: ").append(status.lastError);
+                details.append("\nLast problem: ").append(status.lastError)
+                        .append(" Trying again by itself.");
             }
-            tvStatus.setText(text.toString());
-            tvHelp.setText("Changes made here are sent automatically, and changes made on "
-                    + "other devices appear here while the app is open. Without a connection "
-                    + "the app keeps working and sends the changes later.");
-            show(btnSync, true);
-        } else if (status.link == SyncEngine.LINK_UPLOADING) {
-            tvStatus.setText("The upload of this device's festival was interrupted.\n"
-                    + "Records still to be sent: " + status.pending);
-            tvHelp.setText("Continue the upload. Nothing is sent twice. Other devices can "
-                    + "join only when it has finished.");
-            btnUpload.setText("Continue the upload");
-            show(btnUpload, faculty);
+            if (!cloud.listenerProblem().isEmpty()) {
+                details.append("\nLive updates paused: ").append(cloud.listenerProblem())
+                        .append(" Starting again shortly.");
+            }
+            tvDetails.setText(details.toString());
+            tvHelp.setText("Changes made on this device are sent by themselves, and changes "
+                    + "made on other devices appear here while the app is open. Without a "
+                    + "connection the app keeps working and sends the changes when the "
+                    + "connection returns.");
+            show(btnSyncNow, true);
+        } else if (state == SyncEngine.Connection.SETTING_UP) {
+            tvHeadline.setText("Setting up online sync");
+            tvDetails.setText(connection + "\nRecords still to be sent: " + status.pending);
+            tvHelp.setText("This device is putting its festival online. It continues by "
+                    + "itself while the app is open; nothing is sent twice. Other devices "
+                    + "connect as soon as it has finished.");
+            btnSetUp.setText("Continue now");
+            show(btnSetUp, faculty);
+        } else if (state == SyncEngine.Connection.NOT_SET_UP) {
+            tvHeadline.setText("Online sync is not set up yet");
+            tvDetails.setText(connection);
+            tvHelp.setText("Until it is, this device keeps its data to itself.\n\nOnline sync "
+                    + "is set up once for the whole festival, by Faculty, on the device that "
+                    + "holds the festival's data. After that every device, phones and "
+                    + "emulators alike, connects by itself and stays in step.");
+            btnSetUp.setText("Set up online sync with this device's data");
+            show(btnSetUp, faculty);
+        } else if (state == SyncEngine.Connection.LOCAL_DATA_IN_THE_WAY) {
+            tvHeadline.setText("This device has data of its own");
+            tvDetails.setText(connection);
+            tvHelp.setText("The festival is online, but this device holds festival data "
+                    + "that is not part of it, so it has not connected.\n\nUse the online "
+                    + "festival to connect it. A copy of this device's own data is kept on "
+                    + "the device first.");
+            show(btnUseOnline, true);
         } else {
-            tvStatus.setText("This device is not connected. Its data is only on this device.");
-            tvHelp.setText("ONE device uploads its festival: the one that holds the real "
-                    + "data. Only Faculty can do that, and only while the server is empty.\n\n"
-                    + "Every other device joins. Joining replaces the festival data on this "
-                    + "device with the shared one; a copy of the local database is kept "
-                    + "first.");
-            btnUpload.setText("Upload this device's festival");
-            show(btnJoin, true);
-            show(btnUpload, faculty);
+            tvHeadline.setText(cloud.isOnline() ? "Connecting..." : "Offline");
+            tvDetails.setText(connection);
+            tvHelp.setText("This device connects to the online festival by itself as soon "
+                    + "as the server can be reached.");
+            show(btnSyncNow, cloud.isOnline());
         }
     }
 
-    // ----- Upload: the first device -----
+    // ----- Setting up online sync: once for the whole festival -----
 
-    private void confirmUpload() {
-        showDialog("Upload the festival on THIS device as the shared festival? Every other "
-                        + "device will receive this data. Do this on one device only.",
-                R.drawable.ic_info, false, "Continue", "Cancel", this::askPasswordAndUpload);
+    private void confirmSetUp() {
+        showDialog("Set up online sync with the festival on THIS device? Its data becomes "
+                        + "the online festival that every device shares. This is done once, "
+                        + "on the device that holds the real data.",
+                R.drawable.ic_info, false, "Continue", "Cancel", this::askPasswordAndSetUp);
     }
 
-    private void askPasswordAndUpload() {
+    private void askPasswordAndSetUp() {
         final EditText etPassword = new EditText(this);
         etPassword.setHint("Password (at least 8 characters)");
         etPassword.setInputType(InputType.TYPE_CLASS_TEXT
                 | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
                 .setTitle("Your online account")
-                .setMessage("You will sign in on every device with " + currentUser.email
-                        + " and this password. If you uploaded before, enter the same "
-                        + "password again.")
+                .setMessage("You will log in on every device with " + currentUser.email
+                        + " and this password. If you started the set-up before, enter the "
+                        + "same password again.")
                 .setView(etPassword)
-                .setPositiveButton("Upload", (dialog, which) -> {
+                .setPositiveButton("Set up", (dialog, which) -> {
                     final String password = etPassword.getText().toString();
-                    runBusy("Uploading the festival. This can take a few minutes...", () -> {
-                        cloud.uploadFestival(currentUser, password);
-                        return true;
-                    }, done -> {
-                        toast("The festival is shared");
-                        refreshScreen();
-                    });
+                    runBusy("Putting the festival online. This can take a few minutes...",
+                            () -> {
+                                cloud.uploadFestival(currentUser, password);
+                                return true;
+                            }, done -> {
+                                toast("Online sync is set up");
+                                refreshScreen();
+                            });
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
     }
 
-    // ----- Join: every other device -----
+    // ----- A device with data of its own -----
 
-    private void confirmJoin() {
-        String question = cloud.hasLocalFestival()
-                ? "Join the shared festival? The sports, registrations, fixtures and results "
-                + "on THIS device will be replaced by the shared ones. A copy of the local "
-                + "database is kept on this device first. You will have to log in again."
-                : "Join the shared festival? This device will receive its data.";
-        showDialog(question, R.drawable.ic_info, cloud.hasLocalFestival(), "Join", "Cancel",
-                () -> runBusy("Joining the shared festival...", () -> cloud.joinFestival(),
-                        backup -> {
-                            // Local accounts were replaced, so the old login is gone.
-                            Session.logout(this, repo, currentUser);
-                            showDialog("This device now shares the festival.\n\nA copy of "
-                                            + "the earlier data is in:\n" + backup.getPath(),
-                                    R.drawable.ic_check, false, "OK", null, this::openHome);
-                        }));
+    private void confirmUseOnline() {
+        showDialog("Use the online festival on this device? Its sports, registrations, "
+                        + "fixtures, results and accounts are replaced by the online ones. A "
+                        + "copy of this device's data is kept first. You will have to log in "
+                        + "again.", R.drawable.ic_info, true, "Use the online festival",
+                "Cancel",
+                () -> runBusy("Connecting...", () -> {
+                    cloud.useOnlineFestival();
+                    return true;
+                }, done -> {
+                    // The accounts on this device were replaced: the old login is gone.
+                    if (currentUser != null) {
+                        Session.logout(this, repo, currentUser);
+                    }
+                    refreshScreen();
+                }));
     }
 }

@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat;
 
 import com.example.flaviumarena.ui.admin.CloudActivity;
 import com.example.flaviumarena.cloud.Cloud;
+import com.example.flaviumarena.sync.SyncEngine;
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.admin.ReportsActivity;
 import com.example.flaviumarena.ui.admin.SelfTestActivity;
@@ -126,8 +127,7 @@ public class MoreFragment extends BaseFragment {
         addSection("Festival");
         addRow(R.drawable.ic_trophy, "Medal table", "", false, () -> open(MedalsActivity.class));
         addRow(R.drawable.ic_users, "Branches", "", false, () -> open(BranchesActivity.class));
-        addRow(R.drawable.ic_live, "Online sharing",
-                Cloud.get(requireContext()).isConnected() ? "Connected" : "", false,
+        addRow(R.drawable.ic_live, "Online sync", syncLabel(), false,
                 () -> open(CloudActivity.class));
         addRow(R.drawable.ic_download, "Reports and downloads", "", false,
                 () -> open(ReportsActivity.class));
@@ -163,6 +163,25 @@ public class MoreFragment extends BaseFragment {
                                 main().openHome();
                             }));
         }
+    }
+
+    /** Synced, syncing, offline, or how many changes are still waiting to be sent. */
+    private String syncLabel() {
+        Cloud cloud = Cloud.get(requireContext());
+        if (!cloud.isConfigured()) {
+            return "";
+        }
+        if (!cloud.isConnected()) {
+            return cloud.connection() == SyncEngine.Connection.NOT_SET_UP ? "Not set up" : "";
+        }
+        if (!cloud.isOnline()) {
+            return "Offline";
+        }
+        if (cloud.isSyncing()) {
+            return "Syncing";
+        }
+        int pending = cloud.status().pending;
+        return pending == 0 ? "Synced" : pending + " waiting";
     }
 
     private void openMyBranch() {

@@ -50,6 +50,7 @@ public class RoundEditActivity extends BaseActivity {
             round.venue = "";
         } else {
             round = repo.getRound(roundId);
+            watchRecord("event_rounds", roundId);
         }
         Category category = round == null ? null : repo.getCategory(round.categoryId);
         if (category == null) {

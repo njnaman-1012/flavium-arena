@@ -223,9 +223,15 @@ against a temporary database and lists each check.
 
 ## Sharing data between devices
 
-**Status: built, and tested against the Firebase Local Emulator Suite. Not yet tested
-against the real Firebase project or between two real devices.** A device shares
-nothing until someone connects it from **More > Online sharing**.
+**Status: the security rules and indexes are deployed to the Firebase project
+`flavium-arena`. The sharing code is tested against the Firebase Local Emulator Suite;
+setting up online sync and two real devices exchanging data on the live project still
+have to be tried by the project owner (see "Checking it on two real devices").**
+
+Every device is a full member of the festival: any device can create and change data
+(within what its account may do), and every other device receives the change by itself.
+There is no main device. Firestore holds the shared festival; each device keeps a copy
+in SQLite, works on it offline and stays in step when it is online.
 
 ### How it works
 
@@ -243,6 +249,25 @@ nothing until someone connects it from **More > Online sharing**.
 - `cloud/Cloud` owns the connection: it synchronises when the app comes to the front
   and after every local save, and listens for server changes while the app is open.
   Every screen reloads itself through `refreshScreen()` when data arrives.
+
+Nothing has to be pressed in normal use:
+
+- A device connects to the online festival by itself when the app opens, when the
+  network returns, and before a login. A new installation simply receives the
+  festival. Logging in on any device gives it what that account may see.
+- A change is saved locally first, queued, and sent within moments.
+- Changes from other devices arrive through live listeners and the open screen shows
+  them. Standings and medals are worked out from the results, so they follow.
+- Without a network the app keeps working and a line above the tabs says so ("Offline.
+  3 changes will be sent when the connection returns"). When the network comes back the
+  queue is sent by itself. If the server cannot be reached the app tries again after 5,
+  10, 20 and 40 seconds and then every minute while it is open.
+- A change whose acknowledgement was lost is recognised when it is sent again and is
+  not written twice.
+- Edit screens read their record once and are never reloaded under the person typing.
+  If another device changes the same record meanwhile, the person is told; saving a
+  category or registration then asks before replacing the other change, and fixtures
+  and events refuse to save over a newer version.
 
 ### Data on the server
 
@@ -298,25 +323,33 @@ indexes of `firestore.indexes.json` under Firestore > Indexes.
 Until the rules are published, a production-mode database refuses everything and the
 app reports that the server refused the request.
 
-### Connecting devices for the first time
+### Setting up online sync (once for the whole festival)
 
-Two installations that were used separately each have their own festival, with their
-own ids. They are not merged row by row, because that would create duplicates.
+The data that existed before online sync is put online once; after that nobody thinks
+about it again.
 
-1. **One device uploads** (More > Online sharing > Upload this device's festival).
-   Only a Faculty account can, and only while the server is empty. Faculty chooses the
-   password of their online account at this point. The server is reserved for that
-   device first, so a second device cannot upload as well. If the upload is interrupted
-   it continues where it stopped and sends nothing twice.
+1. **Set up online sync** (More > Online sync, shown to Faculty only while nothing is
+   online yet) on the device that holds the festival's real data. Faculty chooses the
+   password of their online account here. If it is interrupted it continues by itself
+   and sends nothing twice.
 2. **Faculty creates the online logins** of the other organisers in Accounts and roles
-   ("Create the online login"). New accounts get one automatically while connected.
-3. **Every other device joins** (Join the shared festival). After the person confirms,
-   a copy of the local database file is kept in the app's `backups` folder and the
-   shared tables are replaced with the server's data. Joining is refused until the
-   first upload is complete. Local data that was never uploaded is replaced, not
-   merged; it remains in the backup copy.
-4. Organisers then log in with their email and password. On a connected device the
-   login is checked by Firebase, not against a local password.
+   ("Create the online login"). New accounts get one automatically.
+3. **Every other device needs nothing.** It connects by itself and receives the
+   festival; organisers just log in with their email and password, which Firebase
+   checks.
+
+One exception is never decided for anyone: a device that already holds festival data of
+its own (made before it was connected, so with different ids) does not connect until
+someone chooses "Use the online festival" on its Online sync screen. Its data is then
+replaced, not merged, and a copy of its database file is kept in the app's `backups`
+folder. Two festivals that were built separately are not merged row by row, because that
+would create duplicates.
+
+### What the Online sync screen shows
+
+Online or offline, Syncing, All changes synced or how many changes are waiting, when it
+last synced, and any problem (it keeps retrying by itself). "Sync now" is there for
+impatience only.
 
 ### Sign-in and sessions
 
@@ -341,6 +374,22 @@ adb reverse tcp:9099 tcp:9099
 Then run the device tests as described under Testing. To point a debug build of the
 app itself at the emulators, set `firebase_emulator_host` to `127.0.0.1` in
 `app/src/debug/res/values/config.xml`. Release builds ignore the setting.
+
+### Checking it on two real devices
+
+On the live project only real accounts can sign in, so these steps are done by hand.
+
+1. Copy anything important off both devices first.
+2. On the device that holds the real festival, log in as Faculty and set up online sync
+   (More > Online sync). Choose the online password there.
+3. In Accounts and roles, create the online logins of the other organisers.
+4. On the second device, open the app and log in with one of those accounts. (If that
+   device has festival data of its own, More > Online sync asks first.)
+5. Change a score on one device: it appears on the other within seconds.
+6. Do the same the other way round, then switch both to airplane mode, change
+   something on each, switch the network back on, and check both have both changes.
+7. Log in with the same account on the second device: it is refused until "Sign out
+   the other device" is chosen, and the first device is then logged out.
 
 ### Billing and limits
 
@@ -369,15 +418,21 @@ needs billing has been enabled or deployed. That has consequences:
   are refused. Logging out sends what is waiting first, when there is a connection.
 - A device that was signed in as an organiser keeps the private rows it received after
   logging out. The app hides them, but they are in its database file.
-- The first device to upload claims the empty server. Do the upload yourself before
-  handing the app to anyone.
-- Synchronisation runs while the app is open. Nothing is sent in the background.
-- When a change arrives the open screen reloads, which can clear a form being typed.
+- Whoever sets up online sync first decides which data becomes the online festival. Do
+  it yourself before handing the app to anyone.
+- Logging in for the first time on a device needs the internet (Firebase checks the
+  password). A device stays logged in when it goes offline afterwards.
+- Synchronisation runs while the app is open. Nothing is sent while it is closed or in
+  the background; waiting changes go out the next time it is opened.
+- When the session is taken over by another device, changes the first device had not
+  sent yet are refused and dropped (it is told). Its private rows stay readable to a
+  modified app until its Firebase sign-in expires: revoking a sign-in needs the Admin
+  SDK, that is, trusted server code.
 
 ## Not built yet
 
 - **A test between real devices on the real Firebase project.** The sharing code has
-  only been run against the local emulators.
+  been run against the local emulators only. See "Checking it on two real devices".
 - Automatic creation of the next knockout round. The knockout view only shows who
   went through.
 - Net run rate in cricket tables.
