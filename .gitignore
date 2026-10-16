@@ -22,3 +22,7 @@ google-services.json
 firestore-debug.log
 firebase-debug.log
 ui-debug.log
+# Release signing: the upload key and its passwords never go into git.
+keystore.properties
+*.jks
+*.keystore

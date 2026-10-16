@@ -1,7 +1,6 @@
 package com.example.flaviumarena.cloud;
 
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.os.Build;
@@ -10,7 +9,6 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 
-import com.example.flaviumarena.R;
 import com.example.flaviumarena.data.ArenaException;
 import com.example.flaviumarena.data.ArenaRepository;
 import com.example.flaviumarena.data.PermissionDeniedException;
@@ -139,15 +137,9 @@ public final class Cloud {
         }
         auth = FirebaseAuth.getInstance();
         firestore = FirebaseFirestore.getInstance();
-        // Debug builds can be pointed at the Firebase emulators on the development
-        // computer (res/values/config.xml), so nothing has to touch the real project.
-        String emulator = context.getString(R.string.firebase_emulator_host);
-        boolean debuggable = (context.getApplicationInfo().flags
-                & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
-        if (debuggable && !emulator.isEmpty()) {
-            firestore.useEmulator(emulator, 8080);
-            auth.useEmulator(emulator, 9099);
-        }
+        // Release builds: the real project, always. Debug builds may be pointed at the
+        // Firebase Local Emulator Suite (see LocalServers in app/src/debug).
+        LocalServers.use(context, firestore, auth);
         SyncEngine probe = new SyncEngine(RepositoryProvider.database(context), null);
         store = new FirestoreRemoteStore(firestore, probe.deviceId());
         engine = new SyncEngine(RepositoryProvider.database(context), store);
@@ -461,8 +453,8 @@ public final class Cloud {
             try {
                 succeeded = engine.sync();
             } catch (RuntimeException e) {
+                // Shown on the status line ("Sync temporarily unavailable"), retried below.
                 Log.w(TAG, "Synchronisation failed", e);
-                notice("Synchronisation stopped: " + e.getMessage());
             } finally {
                 syncing = false;
             }
@@ -478,25 +470,6 @@ public final class Cloud {
                 notifyObservers();
             }
         });
-    }
-
-    /** Waits. One exchange right now, for the "Synchronise now" button. */
-    public boolean syncNow() {
-        if (!isConnected()) {
-            lastConnectAttempt = 0;
-            connectQuietly();
-        }
-        syncing = true;
-        notifyStatus();
-        boolean ok;
-        try {
-            ok = engine.sync();
-        } finally {
-            syncing = false;
-        }
-        scheduleRetry(ok);
-        notifyObservers();
-        return ok;
     }
 
     private void startListening() {
@@ -652,12 +625,16 @@ public final class Cloud {
         if (faculty == null || !Role.FACULTY.equals(faculty.role)) {
             throw new PermissionDeniedException("Only Faculty can upload the festival.");
         }
+        if (engine.status().link == SyncEngine.LINK_NONE) {
+            // The festival is about to be copied up from here: keep a copy of it first.
+            LocalBackup.copy(app, RepositoryProvider.database(app));
+        }
         String uid = createOrSignIn(faculty.email, password);
         applyScope(faculty);
         long device = engine.deviceId();
         if (!store.claim(device)) {
-            throw new SyncException("The server already has a festival, or another device is "
-                    + "uploading one. This device has to join it instead.");
+            throw new SyncException("The festival is already online, or is being put online "
+                    + "from another device. This device connects to it by itself.");
         }
         Map<String, Object> link = new HashMap<>();
         link.put("userId", faculty.id);
@@ -743,8 +720,17 @@ public final class Cloud {
             Object branch = account.get("v.branch_id");
             scope.branchId = branch == null ? null : String.valueOf(branch);
             store.setScope(scope);
-            // The account may see more now than this device has: fetch it.
-            engine.reloadAll();
+            // The account may see more now than this device has: fetch it. If the previous
+            // account's data could not be cleared at its logout, replace everything with
+            // what this account may see instead.
+            boolean startAfresh = app.getSharedPreferences("flavium_cloud", Context.MODE_PRIVATE)
+                    .getBoolean("replace_at_login", false);
+            if (startAfresh && engine.replaceWithServerView()) {
+                app.getSharedPreferences("flavium_cloud", Context.MODE_PRIVATE).edit()
+                        .putBoolean("replace_at_login", false).apply();
+            } else {
+                engine.reloadAll();
+            }
             User local = repo.getUser(userId);
             if (local != null && Role.COACH.equals(expectedRole)
                     && !local.coachSportIds.isEmpty()) {
@@ -790,8 +776,20 @@ public final class Cloud {
             auth.signOut();
             rememberUser(null);
             applyScope(null);
+            // Nothing of the previous account's private data stays behind: the device
+            // keeps the public festival only. If changes are still waiting (no network),
+            // that happens at the next login instead, so nothing is lost.
+            boolean cleared = false;
+            try {
+                cleared = engine.replaceWithServerView();
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Keeping only the public data failed: " + e.getMessage());
+            }
+            app.getSharedPreferences("flavium_cloud", Context.MODE_PRIVATE).edit()
+                    .putBoolean("replace_at_login", !cleared).apply();
             if (isConnected()) {
                 startListening();
+                notifyObservers();
             }
         });
     }
@@ -811,17 +809,12 @@ public final class Cloud {
         if (maker == null) {
             maker = FirebaseApp.initializeApp(app, FirebaseApp.getInstance().getOptions(),
                     "account-maker");
-            String emulator = app.getString(R.string.firebase_emulator_host);
-            boolean debuggable = (app.getApplicationInfo().flags
-                    & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
-            if (debuggable && !emulator.isEmpty()) {
-                FirebaseAuth.getInstance(maker).useEmulator(emulator, 9099);
-            }
+            LocalServers.use(app, null, FirebaseAuth.getInstance(maker));
         }
         // The server links a sign-in only to an account it already knows.
         if (isConnected() && !engine.sync()) {
-            throw new RemoteStore.Unavailable("The server could not be reached, so the "
-                    + "account could not be sent to it first. Try again when connected.");
+            throw new RemoteStore.Unavailable("No internet connection. Try again when you are "
+                    + "online.");
         }
         FirebaseAuth second = FirebaseAuth.getInstance(maker);
         String uid;
@@ -863,7 +856,8 @@ public final class Cloud {
         try {
             return Tasks.await(task, TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
-            throw new RemoteStore.Unavailable("The server did not answer in time.");
+            throw new RemoteStore.Unavailable("The connection is too slow right now. Try again "
+                    + "in a moment.");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RemoteStore.Unavailable("The request was interrupted.");
@@ -873,7 +867,8 @@ public final class Cloud {
                 throw new SyncException("An online account with this email already exists.");
             }
             if (cause instanceof FirebaseNetworkException) {
-                throw new RemoteStore.Unavailable("No connection to the server.");
+                throw new RemoteStore.Unavailable("No internet connection. Try again when you "
+                        + "are online.");
             }
             if (cause instanceof FirebaseAuthException) {
                 // Wrong password, unknown email, weak password: say what Firebase said.
@@ -885,12 +880,12 @@ public final class Cloud {
                                 .getCode();
                 if (code == com.google.firebase.firestore.FirebaseFirestoreException.Code
                         .PERMISSION_DENIED) {
-                    throw new RemoteStore.Refused("The server does not allow this account to "
-                            + "do that.");
+                    throw new RemoteStore.Refused("Your account is not allowed to do that.");
                 }
             }
-            throw new RemoteStore.Unavailable(cause == null ? "The server could not be reached."
-                    : String.valueOf(cause.getMessage()));
+            Log.w(TAG, "Request failed", cause);
+            throw new RemoteStore.Unavailable("Sync temporarily unavailable. We'll retry "
+                    + "automatically.");
         }
     }
 }

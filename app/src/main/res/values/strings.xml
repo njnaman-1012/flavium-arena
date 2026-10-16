@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">FLAVIUM Arena</string>
-    <string name="dev_banner">LOCAL DEVELOPMENT BUILD\nData is stored only on this device (SQLite). Nothing is synchronised online.</string>
+    <!-- Shown only in debug builds, above the development accounts on the login screen. -->
+    <string name="dev_accounts_note">Debug build: development accounts are available for testing.</string>
 </resources>

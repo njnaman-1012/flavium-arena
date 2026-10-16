@@ -38,14 +38,13 @@ public class FacultySetupActivity extends BaseActivity {
 
         TextView tvStatus = findViewById(R.id.tvSetupStatus);
         if (authorisedEmail.isEmpty()) {
-            tvStatus.setText("No Faculty email has been configured yet, so an account cannot "
-                    + "be created. Write the email in app/src/main/res/values/config.xml "
-                    + "(faculty_email) and rebuild the app.");
+            tvStatus.setText("This version of the app has no Faculty email, so the first "
+                    + "Faculty account cannot be created on it. Ask the organisers for the "
+                    + "version prepared for the festival.");
             findViewById(R.id.btnCreateFaculty).setEnabled(false);
         } else {
-            tvStatus.setText("An authorised Faculty email is configured. Type that address "
-                    + "below to continue. Local build: ownership of the address cannot be "
-                    + "verified on this device.");
+            tvStatus.setText("Only the festival's Faculty email can be used here. Type it "
+                    + "below to continue.");
         }
 
         findViewById(R.id.btnCreateFaculty).setOnClickListener(v -> create());

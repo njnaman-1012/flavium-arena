@@ -279,12 +279,21 @@ public class FirestoreRemoteStore implements RemoteStore {
     /**
      * Starts listening for rows that change after the given revision. The returned
      * object stops all the listeners again; the caller must call remove() on it.
+     *
+     * Only what the server confirms is passed on. Firestore first replays what it has
+     * kept on the phone from earlier sessions, which can be out of date (or belong to a
+     * festival that has since been reset): that replay is ignored. The local database is
+     * this app's offline copy, not Firestore's cache.
      */
     public ListenerRegistration listen(long since, final ChangeSink sink) {
         final List<ListenerRegistration> registrations = new ArrayList<>();
         List<Query> queries = queries(since);
         for (int i = 0; i < queries.size(); i++) {
             final boolean fromPrivate = i > 0;
+            // After an ignored replay, the next server answer is read whole: its list of
+            // changes is relative to the replay, so it would leave out rows that were in
+            // both.
+            final boolean[] readWhole = {true};
             registrations.add(queries.get(i).addSnapshotListener((snapshot, error) -> {
                 if (error != null) {
                     sink.onError(describe(error));
@@ -293,10 +302,21 @@ public class FirestoreRemoteStore implements RemoteStore {
                 if (snapshot == null) {
                     return;
                 }
+                if (snapshot.getMetadata().isFromCache()) {
+                    readWhole[0] = true;
+                    return;
+                }
                 List<Change> changes = new ArrayList<>();
-                for (DocumentChange change : snapshot.getDocumentChanges()) {
-                    if (change.getType() != DocumentChange.Type.REMOVED) {
-                        changes.add(toChange(change.getDocument(), fromPrivate));
+                if (readWhole[0]) {
+                    for (DocumentSnapshot document : snapshot.getDocuments()) {
+                        changes.add(toChange(document, fromPrivate));
+                    }
+                    readWhole[0] = false;
+                } else {
+                    for (DocumentChange change : snapshot.getDocumentChanges()) {
+                        if (change.getType() != DocumentChange.Type.REMOVED) {
+                            changes.add(toChange(change.getDocument(), fromPrivate));
+                        }
                     }
                 }
                 if (!changes.isEmpty()) {

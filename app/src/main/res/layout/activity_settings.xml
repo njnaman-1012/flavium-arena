@@ -53,6 +53,34 @@
                 style="@style/Arena.Body"
                 android:text="When off, only Faculty can add, change, deactivate or remove Branch CR accounts." />
 
+            <!-- First-time setup: shown only while the festival is not online yet. -->
+            <LinearLayout
+                android:id="@+id/panelFestivalSetup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Put the festival online"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvFestivalSetup"
+                    style="@style/Arena.Body" />
+
+                <Button
+                    android:id="@+id/btnFestivalSetup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp" />
+            </LinearLayout>
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

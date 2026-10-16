@@ -15,10 +15,4 @@
     <!-- Development accounts and sample sports/fixtures. Off here, on in debug builds. -->
     <bool name="seed_dev_data">false</bool>
 
-    <!--
-        Development only: the address of the Firebase emulators, as the device reaches
-        them (127.0.0.1 after "adb reverse tcp:8080 tcp:8080" and "tcp:9099"). Leave it
-        empty to use the real Firebase project. Release builds ignore this value.
-    -->
-    <string name="firebase_emulator_host" translatable="false"></string>
 </resources>

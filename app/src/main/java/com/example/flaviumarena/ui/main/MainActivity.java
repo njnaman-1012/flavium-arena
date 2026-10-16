@@ -93,12 +93,14 @@ public class MainActivity extends BaseActivity {
         String text;
         if (!cloud.isOnline()) {
             text = pending == 0
-                    ? "Offline. You can keep working; changes are sent when the connection returns."
-                    : "Offline. " + changes + " will be sent when the connection returns.";
+                    ? "You are offline. You can keep working; changes sync automatically "
+                            + "when you are back online."
+                    : "You are offline. " + changes + " will sync automatically when you are "
+                            + "back online.";
         } else if (pending > 0) {
             text = cloud.status().lastError.isEmpty()
-                    ? "Sending " + changes + "..."
-                    : changes + " waiting: the server could not be reached. Trying again.";
+                    ? "Syncing " + changes + "..."
+                    : "Sync temporarily unavailable. We'll retry automatically.";
         } else {
             text = null;
         }

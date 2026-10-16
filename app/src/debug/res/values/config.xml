@@ -8,4 +8,12 @@
     -->
     <string name="faculty_email" translatable="false">faculty@flavium.test</string>
     <bool name="seed_dev_data">true</bool>
+
+    <!--
+        The address of the Firebase Local Emulator Suite, as the device reaches it
+        (127.0.0.1 after "adb reverse tcp:8080 tcp:8080" and "adb reverse tcp:9099
+        tcp:9099"). Empty: the real Firebase project. Release builds do not have this
+        setting at all.
+    -->
+    <string name="firebase_emulator_host" translatable="false"></string>
 </resources>

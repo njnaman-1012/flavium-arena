@@ -6,6 +6,7 @@ import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -176,8 +177,8 @@ public class SyncEngine {
         RemoteStore.Dataset dataset = remote.dataset();
         if (dataset.ready || (dataset.owner != 0 && dataset.owner != device)
                 || !remote.claim(device)) {
-            throw new SyncException("The server already has a festival, or another device is "
-                    + "uploading one. This device has to join it instead of uploading.");
+            throw new SyncException("The festival is already online, or is being put online "
+                    + "from another device. This device connects to it by itself.");
         }
         if (link == LINK_NONE) {
             seedRemote();
@@ -185,8 +186,8 @@ public class SyncEngine {
         }
         pushPending();
         if (pendingCount() > 0) {
-            throw new SyncException("Some records were not accepted by the server, so the "
-                    + "upload is not complete. Check the notices and try again.");
+            throw new SyncException("Some records were not accepted, so the festival is not "
+                    + "fully online yet. Check the messages shown and try again.");
         }
         remote.markReady(device);
         SQLiteDatabase db = helper.getWritableDatabase();
@@ -366,17 +367,17 @@ public class SyncEngine {
                 return false;
             }
             takeServerCopy(server, table, key);
-            notices.add("Removing " + describe(table) + " was not sent: the server "
-                    + "already had a saved copy, which is shown again. Remove it once more "
-                    + "if it should go.");
+            notices.add("Removing " + describe(table) + " did not go through: it had "
+                    + "already been saved for everyone, so it is shown again. Remove it once "
+                    + "more if it should go.");
             return false;
         }
         if (baseRev > 0 && !isComplete(db, table, key)) {
             // This device only ever received the public copy of the row (no phone
             // number, no email), so sending it would erase the rest on the server.
             takeServerCopy(serverCopy(table, key), table, key);
-            notices.add("Your change to " + describe(table) + " was not sent: this device "
-                    + "does not hold the complete record.");
+            notices.add("Your change to " + describe(table) + " could not be saved on this "
+                    + "device. The latest version is now shown.");
             return false;
         }
         try {
@@ -398,8 +399,8 @@ public class SyncEngine {
         } catch (RemoteStore.Refused refused) {
             dropQueuedDependents(table, key);
             takeServerCopy(serverCopy(table, key), table, key);
-            notices.add("Your change to " + describe(table) + " was not accepted: "
-                    + refused.getMessage());
+            notices.add("Your change to " + describe(table) + " was not saved: your "
+                    + "account is not allowed to make it. The latest version is now shown.");
             return false;
         }
     }
@@ -472,6 +473,22 @@ public class SyncEngine {
     // =====================================================================
     // Server changes to the local database
     // =====================================================================
+
+    /**
+     * Replaces the shared tables with exactly what the current sign-in may see on the
+     * server. Used when the person using the device changes: after a logout (the public
+     * view, so the next person cannot find the previous account's private rows in the
+     * database) and at the next login if that could not be done then. Only when nothing
+     * is waiting to be sent, because waiting changes would be lost; returns false then,
+     * or when the device is not connected. Needs the network.
+     */
+    public boolean replaceWithServerView() {
+        if (state(SyncSchema.STATE_LINK) != LINK_CONNECTED || pendingCount() > 0) {
+            return false;
+        }
+        adoptRemote();
+        return true;
+    }
 
     /**
      * Reads everything the server lets this device see and applies it. Used after
@@ -591,8 +608,9 @@ public class SyncEngine {
             } catch (SQLiteConstraintException e) {
                 // For example a different local record with the same name. It is reported,
                 // never forced: forcing it would silently destroy one of the two.
-                notices.add("A change to " + describe(change.table) + " from another device "
-                        + "could not be applied here: " + e.getMessage());
+                Log.w("FlaviumSync", "Could not apply " + change.table + " " + change.key, e);
+                notices.add("A change to " + describe(change.table) + " made on another "
+                        + "device clashes with a record on this device and is not shown here.");
             } finally {
                 db.endTransaction();
             }
@@ -654,8 +672,44 @@ public class SyncEngine {
         return copy;
     }
 
+    /** What a row is, in the words of the app, for the messages people see. */
     private static String describe(String table) {
-        return "a record in \"" + table.replace('_', ' ') + "\"";
+        switch (table) {
+            case "branches":
+                return "a branch";
+            case "users":
+                return "an account";
+            case "sports":
+                return "a sport";
+            case "coach_sports":
+                return "a coach's sports";
+            case "categories":
+                return "a category";
+            case "registrations":
+                return "a registration";
+            case "matches":
+                return "a match";
+            case "match_periods":
+                return "a set or period of a match";
+            case "match_events":
+                return "a match event";
+            case "score_audit":
+                return "a score history entry";
+            case "event_rounds":
+                return "a heat or final";
+            case "event_entries":
+                return "an entrant's result";
+            case "event_attempts":
+                return "an attempt";
+            case "event_audit":
+                return "an event history entry";
+            case "settings":
+                return "a setting";
+            case "admin_audit":
+                return "the administrative log";
+            default:
+                return "a record";
+        }
     }
 
     // =====================================================================

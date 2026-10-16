@@ -207,6 +207,8 @@ public class LoginActivity extends BaseActivity {
             runBusy("Connecting...", cloud::connectForLogin, connection -> {
                 if (connection == SyncEngine.Connection.CONNECTED) {
                     loginOnline(cloud, takeOver);
+                } else if (connection == SyncEngine.Connection.LOCAL_DATA_IN_THE_WAY) {
+                    switchToOnlineFestival(cloud, takeOver);
                 } else {
                     loginLocally(takeOver);
                 }
@@ -214,6 +216,23 @@ public class LoginActivity extends BaseActivity {
             return;
         }
         loginLocally(takeOver);
+    }
+
+    /**
+     * The festival is online, but this device holds festival data of its own that is not
+     * part of it (it was used before it could connect). Logging in means using the
+     * online festival, so the person is asked first and a copy of this device's data is
+     * kept; nothing is replaced without that.
+     */
+    private void switchToOnlineFestival(Cloud cloud, boolean takeOver) {
+        showDialog("This device has festival data that is not part of the festival online. "
+                        + "To log in, it switches to the online festival. A backup copy of "
+                        + "this device's data is kept on the device.", R.drawable.ic_info, true,
+                "Switch and log in", "Cancel",
+                () -> runBusy("Connecting...", () -> {
+                    cloud.useOnlineFestival();
+                    return true;
+                }, done -> loginOnline(cloud, takeOver)));
     }
 
     /** The login checked against this device's own accounts. */

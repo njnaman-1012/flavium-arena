@@ -48,6 +48,7 @@ public class MoreFragment extends BaseFragment {
                              Bundle savedInstanceState) {
         root = inflater.inflate(R.layout.fragment_more, parent, false);
         container = root.findViewById(R.id.moreContainer);
+        ((TextView) root.findViewById(R.id.tvVersion)).setText("Version " + versionName());
         return root;
     }
 
@@ -127,7 +128,7 @@ public class MoreFragment extends BaseFragment {
         addSection("Festival");
         addRow(R.drawable.ic_trophy, "Medal table", "", false, () -> open(MedalsActivity.class));
         addRow(R.drawable.ic_users, "Branches", "", false, () -> open(BranchesActivity.class));
-        addRow(R.drawable.ic_live, "Online sync", syncLabel(), false,
+        addRow(R.drawable.ic_live, "Sync status", syncLabel(), false,
                 () -> open(CloudActivity.class));
         addRow(R.drawable.ic_download, "Reports and downloads", "", false,
                 () -> open(ReportsActivity.class));
@@ -144,9 +145,9 @@ public class MoreFragment extends BaseFragment {
         addRow(R.drawable.ic_slides, "Onboarding", "", false,
                 () -> open(OnboardingActivity.class));
         addRow(R.drawable.ic_info, "About", "", false, () -> main().showMessage(
-                "FLAVIUM Arena\nSports, fixtures, live scores and points tables for the "
-                        + "FLAVIUM festival.\n\nLocal development build: data is stored only "
-                        + "on this device."));
+                "FLAVIUM Arena " + versionName() + "\nSports, fixtures, live scores, points "
+                        + "tables and medals for the FLAVIUM festival, kept up to date on "
+                        + "every device."));
         if (user() != null) {
             addRow(R.drawable.ic_edit, "Change my password", "", false,
                     () -> main().showChangePasswordDialog());
@@ -165,6 +166,16 @@ public class MoreFragment extends BaseFragment {
         }
     }
 
+    /** The installed version, as Google Play shows it. */
+    private String versionName() {
+        try {
+            return requireContext().getPackageManager()
+                    .getPackageInfo(requireContext().getPackageName(), 0).versionName;
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return "";
+        }
+    }
+
     /** Synced, syncing, offline, or how many changes are still waiting to be sent. */
     private String syncLabel() {
         Cloud cloud = Cloud.get(requireContext());
@@ -172,7 +183,7 @@ public class MoreFragment extends BaseFragment {
             return "";
         }
         if (!cloud.isConnected()) {
-            return cloud.connection() == SyncEngine.Connection.NOT_SET_UP ? "Not set up" : "";
+            return cloud.isOnline() ? "" : "Offline";
         }
         if (!cloud.isOnline()) {
             return "Offline";

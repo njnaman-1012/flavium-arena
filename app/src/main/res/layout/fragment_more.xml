@@ -71,7 +71,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Version 1.0 (local development build)"
+            android:text=""
             android:textColor="@color/text_hint"
             android:textSize="12sp" />
     </LinearLayout>

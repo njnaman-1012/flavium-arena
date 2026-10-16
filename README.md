@@ -167,7 +167,8 @@ All of these rules are in `auth/AccessControl.java`.
 | Development values | `app/src/debug/res/values/config.xml` | Used by debug builds only |
 | Development accounts | `app/src/debug/java/.../data/DevData.java` | Not compiled into a release build |
 | Firebase | `app/google-services.json` | Not in the repository; ignored by git |
-| Signing keys | `*.jks`, `*.keystore` | Ignored by git |
+| Firebase emulator address | `app/src/debug/res/values/config.xml` (`firebase_emulator_host`) | Debug builds only; a release build has no such setting and always uses the real project |
+| Release signing | `keystore.properties` in the project folder | Ignored by git, as are `*.jks` and `*.keystore` |
 
 There are no real credentials in the repository. The development accounts exist only in
 debug builds and use the reserved `.test` domain. If you make the repository public,
@@ -183,6 +184,32 @@ change those passwords first: anyone who can read the repository can read them.
 4. For a real installation, write the Faculty email into
    `app/src/main/res/values/config.xml`, build a release, and use "Set up the first
    Faculty account" on the login screen. Faculty then creates every other account.
+
+### Building for Google Play
+
+1. Create an upload key once and keep it safe (it cannot be recovered):
+
+```bash
+keytool -genkeypair -v -keystore upload-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+2. Next to `settings.gradle.kts`, create `keystore.properties` (git ignores it):
+
+```
+storeFile=upload-key.jks
+storePassword=...
+keyAlias=upload
+keyPassword=...
+```
+
+3. Build the bundle; it is signed when the file exists:
+
+```bash
+./gradlew bundleRelease
+```
+
+The bundle is `app/build/outputs/bundle/release/app-release.aab`. Google Play does not
+accept application ids that start with `com.example`; see "Before publishing" below.
 
 If a development account is missing from a database that was created by an older
 version of the app, use "Create or repair this development account" on the login form.
@@ -328,10 +355,11 @@ app reports that the server refused the request.
 The data that existed before online sync is put online once; after that nobody thinks
 about it again.
 
-1. **Set up online sync** (More > Online sync, shown to Faculty only while nothing is
-   online yet) on the device that holds the festival's real data. Faculty chooses the
-   password of their online account here. If it is interrupted it continues by itself
-   and sends nothing twice.
+1. **Put the festival online** (More > Administrative settings, shown to Faculty only,
+   and only while nothing is online yet) on the device that holds the festival's real
+   data. A copy of that device's database is kept first. Faculty chooses the password of
+   their online account here. If it is interrupted it continues by itself and sends
+   nothing twice. Nobody else ever sees this step.
 2. **Faculty creates the online logins** of the other organisers in Accounts and roles
    ("Create the online login"). New accounts get one automatically.
 3. **Every other device needs nothing.** It connects by itself and receives the
@@ -339,17 +367,26 @@ about it again.
    checks.
 
 One exception is never decided for anyone: a device that already holds festival data of
-its own (made before it was connected, so with different ids) does not connect until
-someone chooses "Use the online festival" on its Online sync screen. Its data is then
-replaced, not merged, and a copy of its database file is kept in the app's `backups`
-folder. Two festivals that were built separately are not merged row by row, because that
-would create duplicates.
+its own (made before it was connected, so with different ids) does not connect by
+itself. When someone logs in on it, the app asks to switch it to the online festival.
+Its data is then replaced, not merged, and a copy of its database file is kept in the
+app's `backups` folder. Two festivals that were built separately are not merged row by
+row, because that would create duplicates.
 
-### What the Online sync screen shows
+### Sync status
 
-Online or offline, Syncing, All changes synced or how many changes are waiting, when it
-last synced, and any problem (it keeps retrying by itself). "Sync now" is there for
-impatience only.
+More > Sync status is read-only: online or offline, when the device last synced, and how
+many changes are still on their way. There is nothing to press. When the network or the
+server is unavailable the app says "Sync temporarily unavailable. We'll retry
+automatically." and does so.
+
+### Logging out
+
+The device stops listening for the account's private data, signs out of Firebase and
+keeps only what the public may see, so the next person using it cannot find the previous
+account's registrations, phone numbers or histories in its database. If changes are still
+waiting to be sent (no network), they are kept and the clearing happens at the next
+login instead.
 
 ### Sign-in and sessions
 
@@ -373,18 +410,19 @@ adb reverse tcp:9099 tcp:9099
 
 Then run the device tests as described under Testing. To point a debug build of the
 app itself at the emulators, set `firebase_emulator_host` to `127.0.0.1` in
-`app/src/debug/res/values/config.xml`. Release builds ignore the setting.
+`app/src/debug/res/values/config.xml`. A release build has neither the setting nor the
+code that uses it (`cloud/LocalServers` is empty in `app/src/release`).
 
 ### Checking it on two real devices
 
 On the live project only real accounts can sign in, so these steps are done by hand.
 
 1. Copy anything important off both devices first.
-2. On the device that holds the real festival, log in as Faculty and set up online sync
-   (More > Online sync). Choose the online password there.
+2. On the device that holds the real festival, log in as Faculty and put the festival
+   online (More > Administrative settings). Choose the online password there.
 3. In Accounts and roles, create the online logins of the other organisers.
-4. On the second device, open the app and log in with one of those accounts. (If that
-   device has festival data of its own, More > Online sync asks first.)
+4. On the second device, install the app and log in with one of those accounts. (If that
+   device has festival data of its own, the login asks before switching it.)
 5. Change a score on one device: it appears on the other within seconds.
 6. Do the same the other way round, then switch both to airplane mode, change
    something on each, switch the network back on, and check both have both changes.
@@ -428,6 +466,20 @@ needs billing has been enabled or deployed. That has consequences:
   sent yet are refused and dropped (it is told). Its private rows stay readable to a
   modified app until its Firebase sign-in expires: revoking a sign-in needs the Admin
   SDK, that is, trusted server code.
+
+## Before publishing
+
+- **Application id.** Google Play refuses ids that start with `com.example`. Choose a
+  permanent id (for example `in.flavium.arena`), set `applicationId` in
+  `app/build.gradle.kts`, add an Android app with that id to the Firebase project and
+  replace `app/google-services.json` with the new file. The id cannot change after the
+  first upload to Play.
+- **Faculty email** in `app/src/main/res/values/config.xml`, or the first Faculty
+  account cannot be created and the festival cannot be put online.
+- **Upload key** and `keystore.properties` (see "Building for Google Play").
+- **Play Console:** privacy policy URL and the Data safety form (the app stores names,
+  email addresses and phone numbers of organisers and teams), content rating, store
+  listing.
 
 ## Not built yet
 

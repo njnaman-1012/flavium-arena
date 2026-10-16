@@ -1636,4 +1636,48 @@ public class FirestoreEmulatorInstrumentedTest {
             Tasks.await(core.firestore.enableNetwork());
         }
     }
+
+    @Test
+    public void afterLogoutTheDeviceKeepsOnlyWhatThePublicMaySee() throws Exception {
+        // A score history exists only once a score has been changed.
+        Match first = liveMatch(a);
+        a.repo.updateScore(facultyA, first.id, first.version, 1, 1, "", Match.STATUS_LIVE);
+        assertTrue(a.sync.sync());
+        Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        User coreUser = localUser(core, userId(DevData.CORE_EMAIL), Role.CORE);
+        String secret = "(status <> 'APPROVED' OR contact_phone <> '')";
+        assertTrue(count(core, "registrations", secret) > 0);
+        assertTrue(count(core, "score_audit", null) > 0);
+
+        // A change is still waiting: nothing is cleared, so it is not lost.
+        Match live = liveMatch(core);
+        Tasks.await(core.firestore.disableNetwork());
+        core.repo.updateScore(coreUser, live.id, live.version, 4, 4, "", Match.STATUS_LIVE);
+        Tasks.await(core.firestore.enableNetwork());
+        core.auth.signOut();
+        core.scope = null;
+        core.store.setScope(null);
+        assertFalse(core.sync.replaceWithServerView());
+        assertEquals(Integer.valueOf(4), core.repo.getMatch(live.id).scoreA);
+
+        // Signed in again it is sent; after logging out the private rows are gone.
+        Tasks.await(core.auth.signInWithEmailAndPassword(DevData.CORE_EMAIL, PASSWORD));
+        core.scope = new FirestoreRemoteStore.Scope();
+        core.scope.uid = core.auth.getCurrentUser().getUid();
+        core.scope.role = Role.CORE;
+        core.store.setScope(core.scope);
+        assertTrue(core.sync.sync());
+        assertEquals(0, core.sync.pendingCount());
+        core.auth.signOut();
+        core.store.setScope(null);
+        assertTrue(core.sync.replaceWithServerView());
+        assertEquals(0, count(core, "registrations", secret));
+        assertEquals(0, count(core, "score_audit", null));
+        assertEquals(0, count(core, "users", "email LIKE '%@flavium.test'"));
+        // The public festival is all still there, including the score that was sent.
+        assertEquals(count(a, "matches", null), count(core, "matches", null));
+        assertEquals(count(a, "registrations", "status = 'APPROVED'"),
+                count(core, "registrations", null));
+        assertEquals(Integer.valueOf(4), core.repo.getMatch(live.id).scoreA);
+    }
 }
