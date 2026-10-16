@@ -45,7 +45,7 @@ public class BranchManagementInstrumentedTest {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         helper = new DbHelper(context, null, true);
         repo = new SqliteArenaRepository(helper);
-        faculty = repo.createFirstFaculty("Test Faculty", "faculty@flavium.test", "Temp@12345",
+        faculty = repo.createFirstFaculty("Test Faculty", "faculty@flavium.test", DevData.newPassword(),
                 "faculty@flavium.test");
     }
 

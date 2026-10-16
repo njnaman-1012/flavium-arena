@@ -135,7 +135,8 @@ public class DbHelper extends SQLiteOpenHelper {
         addBranchCrRule(db);
         SyncSchema.create(db);
 
-        SeedData.insertSampleBranches(db);
+        // A new installation starts without any festival data: Faculty adds the real
+        // branches, sports and accounts, or the device downloads the online festival.
         if (seedDevData) {
             DevData.insert(db);
             linkSportsToTemplates(db);
@@ -268,7 +269,6 @@ public class DbHelper extends SQLiteOpenHelper {
      */
     private void upgradeToVersion2(SQLiteDatabase db) {
         createBranches(db);
-        SeedData.insertSampleBranches(db);
 
         long before = DatabaseUtils.queryNumEntries(db, "users");
 

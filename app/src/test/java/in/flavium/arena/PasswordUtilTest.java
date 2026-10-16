@@ -11,14 +11,19 @@ import in.flavium.arena.util.PasswordUtil;
 
 import org.junit.Test;
 
+import java.util.UUID;
+
 /** Checks the local password hashing. Runs on the computer, no phone needed. */
 public class PasswordUtilTest {
 
+    /** Made anew for each run, so no password is kept in the source code. */
+    private static final String SECRET = "Pw" + UUID.randomUUID();
+
     @Test
     public void storedValueIsSlowHashAndNeverThePassword() {
-        String stored = PasswordUtil.hash("Secret@123", PasswordUtil.newSalt());
+        String stored = PasswordUtil.hash(SECRET, PasswordUtil.newSalt());
         assertTrue(stored.startsWith("pbkdf2$"));
-        assertFalse(stored.contains("Secret@123"));
+        assertFalse(stored.contains(SECRET));
         // Format: pbkdf2$<hash name>$<iterations>$<hex>
         String[] parts = stored.split("\\$");
         assertEquals(4, parts.length);
@@ -29,11 +34,11 @@ public class PasswordUtilTest {
     @Test
     public void rightPasswordVerifiesAndWrongOneDoesNot() {
         String salt = PasswordUtil.newSalt();
-        String stored = PasswordUtil.hash("Secret@123", salt);
-        assertTrue(PasswordUtil.verify("Secret@123", salt, stored));
-        assertFalse(PasswordUtil.verify("Secret@124", salt, stored));
+        String stored = PasswordUtil.hash(SECRET, salt);
+        assertTrue(PasswordUtil.verify(SECRET, salt, stored));
+        assertFalse(PasswordUtil.verify(SECRET + "x", salt, stored));
         assertFalse(PasswordUtil.verify("", salt, stored));
-        assertFalse(PasswordUtil.verify("Secret@123", "another-salt", stored));
+        assertFalse(PasswordUtil.verify(SECRET, "another-salt", stored));
     }
 
     @Test
@@ -41,17 +46,17 @@ public class PasswordUtilTest {
         String saltA = PasswordUtil.newSalt();
         String saltB = PasswordUtil.newSalt();
         assertNotEquals(saltA, saltB);
-        assertNotEquals(PasswordUtil.hash("Secret@123", saltA),
-                PasswordUtil.hash("Secret@123", saltB));
+        assertNotEquals(PasswordUtil.hash(SECRET, saltA),
+                PasswordUtil.hash(SECRET, saltB));
     }
 
     @Test
     public void valuesFromTheFirstVersionAreStillAcceptedAndMarkedForReplacement() {
-        String old = PasswordUtil.legacyHash("Secret@123", "salt");
+        String old = PasswordUtil.legacyHash(SECRET, "salt");
         assertTrue(PasswordUtil.isLegacy(old));
-        assertTrue(PasswordUtil.verify("Secret@123", "salt", old));
+        assertTrue(PasswordUtil.verify(SECRET, "salt", old));
         assertFalse(PasswordUtil.verify("wrong", "salt", old));
-        assertFalse(PasswordUtil.isLegacy(PasswordUtil.hash("Secret@123", "salt")));
+        assertFalse(PasswordUtil.isLegacy(PasswordUtil.hash(SECRET, "salt")));
     }
 
     @Test

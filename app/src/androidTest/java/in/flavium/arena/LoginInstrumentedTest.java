@@ -93,7 +93,7 @@ public class LoginInstrumentedTest {
     @Test
     public void deactivatedBranchCrCannotLogIn() {
         User faculty = repo.createFirstFaculty("Test Faculty", "faculty@flavium.test",
-                "Temp@12345", "faculty@flavium.test");
+                DevData.newPassword(), "faculty@flavium.test");
         User cr = repo.login(DevData.CAPTAIN_EMAIL, DevData.CAPTAIN_PASSWORD, Role.CAPTAIN);
         repo.setUserActive(faculty, cr.id, false);
         refusal(PermissionDeniedException.class, () ->

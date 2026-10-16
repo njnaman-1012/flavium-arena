@@ -17,7 +17,6 @@ import in.flavium.arena.cloud.Cloud;
 import in.flavium.arena.sync.SyncEngine;
 import in.flavium.arena.R;
 import in.flavium.arena.ui.admin.ReportsActivity;
-import in.flavium.arena.ui.admin.SelfTestActivity;
 import in.flavium.arena.ui.admin.SettingsActivity;
 import in.flavium.arena.ui.admin.UsersActivity;
 import in.flavium.arena.ui.auth.LoginActivity;
@@ -25,13 +24,13 @@ import in.flavium.arena.ui.branches.BranchPageActivity;
 import in.flavium.arena.ui.branches.BranchesActivity;
 import in.flavium.arena.ui.common.BaseActivity;
 import in.flavium.arena.ui.common.BaseFragment;
+import in.flavium.arena.ui.common.DevTools;
 import in.flavium.arena.ui.common.Ui;
 import in.flavium.arena.ui.matches.FixturesActivity;
 import in.flavium.arena.ui.sports.SportsActivity;
 import in.flavium.arena.ui.standings.MedalsActivity;
 import in.flavium.arena.auth.AccessControl;
 import in.flavium.arena.auth.Session;
-import in.flavium.arena.data.DevData;
 import in.flavium.arena.model.Role;
 
 /**
@@ -138,9 +137,9 @@ public class MoreFragment extends BaseFragment {
                 () -> main().selectTab(R.id.nav_discover));
 
         addSection("Settings");
-        if (DevData.AVAILABLE) {
-            addRow(R.drawable.ic_shield, "Permission self-test", "", false,
-                    () -> open(SelfTestActivity.class));
+        // Debug builds only: development screens such as the permission self-test.
+        for (DevTools.Link link : DevTools.moreLinks()) {
+            addRow(R.drawable.ic_shield, link.title, "", false, () -> open(link.screen));
         }
         addRow(R.drawable.ic_slides, "Onboarding", "", false,
                 () -> open(OnboardingActivity.class));

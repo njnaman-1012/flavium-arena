@@ -17,6 +17,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import in.flavium.arena.data.ArenaRepository;
 import in.flavium.arena.data.DbHelper;
+import in.flavium.arena.data.DevData;
 import in.flavium.arena.data.PermissionDeniedException;
 import in.flavium.arena.data.SqliteArenaRepository;
 import in.flavium.arena.model.Category;
@@ -24,6 +25,7 @@ import in.flavium.arena.model.Match;
 import in.flavium.arena.model.Registration;
 import in.flavium.arena.model.Role;
 import in.flavium.arena.model.User;
+import in.flavium.arena.sync.SyncSchema;
 import in.flavium.arena.util.PasswordUtil;
 
 import org.junit.After;
@@ -42,7 +44,7 @@ import java.util.List;
 public class DatabaseUpgradeInstrumentedTest {
 
     private static final String DB_FILE = "upgrade_test.db";
-    private static final String PASSWORD = "Old@12345";
+    private static final String PASSWORD = DevData.newPassword();
 
     private Context context;
 
@@ -201,8 +203,9 @@ public class DatabaseUpgradeInstrumentedTest {
 
         // No Faculty account appears by itself; new tables exist with their defaults.
         assertFalse(repo.hasFaculty());
-        // Five sample branches plus the deactivated "Unassigned" one.
-        assertEquals(6, repo.getBranches().size());
+        // No sample branches are added: only the deactivated "Unassigned" one that holds
+        // the old registrations.
+        assertEquals(1, repo.getBranches().size());
         assertFalse(repo.getBranch(teams.get(0).branchId).active);
         assertTrue(repo.getFlag("core_can_finalise"));
         assertTrue(repo.getFlag("core_can_appoint_captains"));
@@ -317,12 +320,24 @@ public class DatabaseUpgradeInstrumentedTest {
     }
 
     @Test
-    public void newInstallWithoutDevDataHasNoAccounts() {
+    public void newInstallStartsWithoutAnyFestivalData() {
         DbHelper helper = new DbHelper(context, DB_FILE, false);
         SQLiteDatabase db = helper.getWritableDatabase();
-        assertEquals(0, DatabaseUtils.queryNumEntries(db, "users"));
-        assertEquals(0, DatabaseUtils.queryNumEntries(db, "sports"));
-        assertEquals(5, DatabaseUtils.queryNumEntries(db, "branches"));
+        // No festival record of any kind: Faculty adds the real ones, or the device
+        // downloads the online festival.
+        for (String table : SyncSchema.TABLES) {
+            if (!"settings".equals(table)) {
+                assertEquals(table + " must start empty", 0,
+                        DatabaseUtils.queryNumEntries(db, table));
+            }
+        }
+        assertEquals(0, DatabaseUtils.queryNumEntries(db, "sessions"));
+        // Nothing is waiting to be sent anywhere.
+        assertEquals(0, DatabaseUtils.queryNumEntries(db, "sync_outbox"));
+        // Only the application's own configuration is there: the default settings and
+        // the catalogue of scoring templates.
+        assertTrue(DatabaseUtils.queryNumEntries(db, "settings") > 0);
+        assertTrue(DatabaseUtils.queryNumEntries(db, "sport_templates") >= 15);
         helper.close();
     }
 }

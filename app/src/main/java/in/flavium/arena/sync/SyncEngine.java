@@ -109,7 +109,7 @@ public class SyncEngine {
 
     /**
      * True when this device holds festival data of its own: sports, registrations,
-     * fixtures or accounts. A new installation has none (only sample branches).
+     * fixtures or accounts. A new installation has none.
      */
     public boolean hasLocalFestival() {
         SQLiteDatabase db = helper.getReadableDatabase();

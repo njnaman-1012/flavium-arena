@@ -165,16 +165,17 @@ public class SessionInstrumentedTest {
     @Test
     public void deactivationAndPasswordResetSignTheAccountOut() {
         User faculty = repo.createFirstFaculty("Test Faculty", "faculty@flavium.test",
-                "Temp@12345", "faculty@flavium.test");
+                DevData.newPassword(), "faculty@flavium.test");
         assertNotNull("Set-up logs the first Faculty in", faculty.sessionId);
 
         User core = core("Phone A", false);
-        repo.resetPassword(faculty, core.id, "Fresh@12345");
+        String fresh = DevData.newPassword();
+        repo.resetPassword(faculty, core.id, fresh);
         assertNull(repo.resumeSession(core.sessionId));
         assertEquals(SqliteArenaRepository.END_PASSWORD_RESET,
                 repo.getSessionEndReason(core.sessionId));
 
-        User again = repo.login(DevData.CORE_EMAIL, "Fresh@12345", Role.CORE);
+        User again = repo.login(DevData.CORE_EMAIL, fresh, Role.CORE);
         repo.setUserActive(faculty, again.id, false);
         assertNull(repo.resumeSession(again.sessionId));
         refused(PermissionDeniedException.class, () -> addSport(again, "Kabaddi"));

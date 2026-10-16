@@ -27,7 +27,7 @@
     <color name="medal_silver">#9EA7B5</color>
     <color name="medal_bronze">#C27C3D</color>
 
-    <!-- Development banner -->
+    <!-- Status banner (sync and notices) -->
     <color name="banner_background">#FFF3CD</color>
     <color name="banner_text">#664D03</color>
 </resources>

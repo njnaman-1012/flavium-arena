@@ -1,5 +1,3 @@
 <resources>
     <string name="app_name">FLAVIUM Arena</string>
-    <!-- Shown only in debug builds, above the development accounts on the login screen. -->
-    <string name="dev_accounts_note">Debug build: development accounts are available for testing.</string>
 </resources>

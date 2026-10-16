@@ -13,6 +13,7 @@ import in.flavium.arena.model.Role;
 import in.flavium.arena.util.DateUtil;
 import in.flavium.arena.util.PasswordUtil;
 
+import java.security.SecureRandom;
 import java.util.UUID;
 
 /**
@@ -20,27 +21,54 @@ import java.util.UUID;
  * builds and is not part of a release build at all (the release build gets the empty
  * class of the same name in app/src/release).
  *
- * It provides three development accounts and some sample sports, teams and fixtures.
- * The accounts can also be created or repaired later, see createOrRepair.
+ * It provides three development accounts and some sample branches, sports, teams and
+ * fixtures. The accounts can also be created or repaired later, see createOrRepair.
  * There is deliberately no development Faculty account: Faculty is always created
  * through the first-Faculty set-up screen.
+ *
+ * No password is written here. Each development password is made at random when the
+ * app (or a test run) starts, so it is valid only inside this one process. The login
+ * helper of a debug build therefore resets the account to the current password before
+ * it fills in the form (see DevTools in app/src/debug).
  */
 public final class DevData {
 
-    /** True in debug builds: development accounts and the self-test are available. */
-    public static final boolean AVAILABLE = true;
+    /** Declared first: the passwords below are made with it while the class loads. */
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     public static final String CORE_EMAIL = "core@flavium.test";
-    public static final String CORE_PASSWORD = "Core@1234";
+    public static final String CORE_PASSWORD = newPassword();
     public static final String ASOO_EMAIL = "asoo@flavium.test";
-    public static final String ASOO_PASSWORD = "Asoo@1234";
+    public static final String ASOO_PASSWORD = newPassword();
     public static final String CAPTAIN_EMAIL = "captain@flavium.test";
-    public static final String CAPTAIN_PASSWORD = "Capt@1234";
+    public static final String CAPTAIN_PASSWORD = newPassword();
 
     /** Branch of the development captain account. */
     public static final String CAPTAIN_BRANCH = "Computer Engineering";
 
+    /** The development branches: names and short codes. */
+    private static final String[][] BRANCHES = {
+            {"Computer Engineering", "CE"},
+            {"Information Technology", "IT"},
+            {"Mechanical Engineering", "ME"},
+            {"Electronics and Telecommunication", "EXTC"},
+            {"Civil Engineering", "CIVIL"}};
+
     private DevData() {
+    }
+
+    /**
+     * A new random password that meets the app's rules (letters and digits, long
+     * enough). For the development accounts, the self-test and the automated tests, so
+     * that no reusable password is kept in the source code.
+     */
+    public static String newPassword() {
+        String letters = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
+        StringBuilder password = new StringBuilder("Dev-");
+        for (int i = 0; i < 12; i++) {
+            password.append(letters.charAt(RANDOM.nextInt(letters.length())));
+        }
+        return password.append(1000 + RANDOM.nextInt(9000)).toString();
     }
 
     /** Email and password of the development account for a role, or null if there is none. */
@@ -62,22 +90,13 @@ public final class DevData {
                 : Role.ASOO_CORE.equals(role) ? "Test Asoo Core" : "Test Captain";
     }
 
-    /** True when the development account of this role is in the database of this device. */
-    public static boolean exists(Context context, String role) {
-        String[] account = account(role);
-        return account != null && DatabaseUtils.queryNumEntries(
-                RepositoryProvider.helper(context).getReadableDatabase(), "users",
-                "email = ?", new String[]{account[0]}) > 0;
-    }
-
     /**
      * Creates the development account of a role, or puts an existing one back in working
-     * order: active, right role, known password, not locked. Nothing else in the database
-     * is touched. Returns a sentence that says what was done.
+     * order: active, right role, the current password, not locked. Nothing else in the
+     * database is touched. Returns a sentence that says what was done.
      *
-     * Why this is needed: the development accounts are inserted when a database is first
-     * created. A database that was created by an older version of the app and upgraded
-     * since then never received the accounts that were added later.
+     * Why this is needed: the passwords change each time the app starts, and a database
+     * that was created by an older version of the app may not have the account at all.
      *
      * This runs only when the button on the login screen of a debug build is pressed.
      */
@@ -174,6 +193,16 @@ public final class DevData {
     }
 
     public static void insert(SQLiteDatabase db) {
+        // ----- Development branches (a release database starts with none) -----
+        for (String[] branch : BRANCHES) {
+            ContentValues cv = new ContentValues();
+            cv.put("id", newId());
+            cv.put("name", branch[0]);
+            cv.put("code", branch[1]);
+            cv.put("active", 1);
+            db.insertOrThrow("branches", null, cv);
+        }
+
         // ----- Development accounts -----
         String core = user(db, "Test Core", CORE_EMAIL, CORE_PASSWORD, Role.CORE, null);
         String asoo = user(db, "Test Asoo Core", ASOO_EMAIL, ASOO_PASSWORD, Role.ASOO_CORE, null);

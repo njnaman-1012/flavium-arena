@@ -124,39 +124,13 @@
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
-                <!-- Development helper: shown only in builds that seed development data -->
-                <LinearLayout
+                <!-- Empty and hidden; only a debug build puts something here (DevTools). -->
+                <FrameLayout
                     android:id="@+id/panelDev"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:orientation="vertical"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/bg_banner"
-                        android:padding="12dp"
-                        android:text="@string/dev_accounts_note"
-                        android:textColor="@color/banner_text"
-                        android:textSize="12sp" />
-
-                    <Button
-                        android:id="@+id/btnFillDev"
-                        style="@style/Widget.Arena.Button.Small"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="Fill in the development account" />
-
-                    <Button
-                        android:id="@+id/btnRepairDev"
-                        style="@style/Widget.Arena.Button.Small"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Create or repair this development account" />
-                </LinearLayout>
+                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

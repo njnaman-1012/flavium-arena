@@ -46,7 +46,7 @@ import java.util.List;
 @RunWith(AndroidJUnit4.class)
 public class RoundsInstrumentedTest {
 
-    private static final String PASSWORD = "Temp@12345";
+    private static final String PASSWORD = DevData.newPassword();
 
     private DbHelper helper;
     private ArenaRepository repo;

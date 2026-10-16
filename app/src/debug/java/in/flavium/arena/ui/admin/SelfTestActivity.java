@@ -12,7 +12,10 @@ import in.flavium.arena.auth.PermissionSelfTest;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Runs PermissionSelfTest and lists every check with PASS or FAIL. */
+/**
+ * Runs PermissionSelfTest and lists every check with PASS or FAIL. Debug builds only
+ * (app/src/debug); it is opened from the More tab through DevTools.
+ */
 public class SelfTestActivity extends BaseActivity {
 
     @Override

@@ -56,7 +56,7 @@ app/src/main/java/in/flavium/arena/
     common/         BaseActivity, BaseFragment, RowAdapter, FormDialog, Ui helpers
     main/           Home, Discover, Matches and More tabs, onboarding
     auth/           Login and first-Faculty set-up
-    admin/          Accounts, settings, reports, permission self-test
+    admin/          Accounts, settings, reports
     sports/         Sports, the template catalogue, categories and their rule form
     registrations/  Teams and participants
     branches/       Branch list and the branch page
@@ -64,9 +64,11 @@ app/src/main/java/in/flavium/arena/
     events/         Heats and finals of races and throws
     standings/      Standings and the medal table
 
-app/src/debug/     Development accounts, sample data and the permission self-test.
+app/src/debug/     Development accounts, sample data, the development login helper and
+                   the permission self-test (DevData, DevTools, SelfTestActivity).
                    Compiled into debug builds only.
-app/src/release/   Empty twins of the debug classes, so a release build contains none of it.
+app/src/release/   Empty twins of the debug classes, so a release build contains none of it:
+                   a new installation starts with an empty database.
 app/src/test/      Unit tests (run on the computer)
 app/src/androidTest/  Tests that need Android and a real SQLite database
 ```
@@ -182,20 +184,25 @@ All of these rules are in `auth/AccessControl.java`.
 | Firebase emulator address | `app/src/debug/res/values/config.xml` (`firebase_emulator_host`) | Debug builds only; a release build has no such setting and always uses the real project |
 | Release signing | `keystore.properties` in the project folder | Ignored by git, as are `*.jks` and `*.keystore` |
 
-There are no real credentials in the repository. The development accounts exist only in
-debug builds and use the reserved `.test` domain. If you make the repository public,
-change those passwords first: anyone who can read the repository can read them.
+There are no credentials in the repository. The development accounts exist only in
+debug builds and use the reserved `.test` domain; their passwords are not written
+anywhere but made at random each time a debug build or a test run starts. The tests
+create their own accounts the same way.
 
 ## Setup
 
 1. Install Android Studio and open this folder.
 2. Let Gradle sync. The project needs JDK 17 or newer (Android Studio's bundled JDK
    works), Android SDK 37 and a device or emulator with Android 7.0 (API 24) or newer.
-3. Press Run. A debug build starts with sample sports, fixtures and development
-   accounts. On each login form, "Fill in the development account" enters one for you.
-4. For a real installation, write the Faculty email into
+3. Press Run. A debug build starts with sample branches, sports, fixtures and development
+   accounts. On each login form, "Fill in the development account" sets that account to
+   the current random password and enters it for you.
+4. A release build starts with an empty database: no branches, sports, accounts or
+   fixtures. When the festival is online, a new installation downloads it by itself.
+   Before it is online, write the Faculty email into
    `app/src/main/res/values/config.xml`, build a release, and use "Set up the first
-   Faculty account" on the login screen. Faculty then creates every other account.
+   Faculty account" on the login screen. Faculty then adds the branches, sports and every
+   other account, and puts the festival online from Settings.
 
 ### Building for Google Play
 
@@ -223,9 +230,6 @@ keyPassword=...
 The bundle is `app/build/outputs/bundle/release/app-release.aab`. Its application id is
 `in.flavium.arena`, which cannot change after the first upload to Google Play.
 
-If a development account is missing from a database that was created by an older
-version of the app, use "Create or repair this development account" on the login form.
-
 ## Testing
 
 Unit tests, on the computer:
@@ -246,7 +250,7 @@ adb shell am instrument -w in.flavium.arena.test/androidx.test.runner.AndroidJUn
 
 The device tests use temporary in-memory databases and never touch the app's own data.
 Debug builds also have **More > Permission self-test**, which runs the role rules
-against a temporary database and lists each check.
+against a temporary database and lists each check. Release builds do not contain it.
 
 | Area | Tests |
 |---|---|

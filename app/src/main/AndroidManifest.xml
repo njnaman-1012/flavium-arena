@@ -51,7 +51,6 @@
         <activity android:name=".ui.admin.ReportsActivity" />
         <activity android:name=".ui.admin.CloudActivity" />
         <activity android:name=".ui.admin.UsersActivity" />
-        <activity android:name=".ui.admin.SelfTestActivity" />
     </application>
 
 </manifest>

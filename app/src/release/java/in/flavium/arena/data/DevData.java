@@ -1,6 +1,5 @@
 package in.flavium.arena.data;
 
-import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 
 /**
@@ -9,21 +8,7 @@ import android.database.sqlite.SQLiteDatabase;
  */
 public final class DevData {
 
-    public static final boolean AVAILABLE = false;
-
     private DevData() {
-    }
-
-    public static String[] account(String role) {
-        return null;
-    }
-
-    public static boolean exists(Context context, String role) {
-        return false;
-    }
-
-    public static String createOrRepair(Context context, String role) {
-        return "";
     }
 
     public static void insert(SQLiteDatabase db) {

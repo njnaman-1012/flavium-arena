@@ -51,9 +51,11 @@ public final class PermissionSelfTest {
         }
     }
 
-    // Used only inside the temporary database.
+    // Used only inside the temporary database; the passwords are made anew for each run.
     private static final String FACULTY_EMAIL = "faculty@flavium.test";
-    private static final String TEST_PASSWORD = "Temp@12345";
+    private static final String TEST_PASSWORD = DevData.newPassword();
+    private static final String CHANGED_PASSWORD = DevData.newPassword();
+    private static final String RESET_PASSWORD = DevData.newPassword();
 
     private final List<Result> results = new ArrayList<>();
     private final ArenaRepository repo;
@@ -542,9 +544,9 @@ public final class PermissionSelfTest {
         final User lockUser = repo.login("lock@flavium.test", TEST_PASSWORD, Role.ASOO_CORE);
         rejected("Changing your password needs the current password",
                 ValidationException.class,
-                () -> repo.changeOwnPassword(lockUser, "wrong-guess-1", "Fresh@6789"));
+                () -> repo.changeOwnPassword(lockUser, "wrong-guess-1", CHANGED_PASSWORD));
         allowed("An organiser can change their own password",
-                () -> repo.changeOwnPassword(lockUser, TEST_PASSWORD, "Fresh@6789"));
+                () -> repo.changeOwnPassword(lockUser, TEST_PASSWORD, CHANGED_PASSWORD));
         rejected("The old password stops working", ValidationException.class,
                 () -> repo.login("lock@flavium.test", TEST_PASSWORD, Role.ASOO_CORE));
         check("Five wrong passwords lock the account, even for the right password", () -> {
@@ -557,15 +559,15 @@ public final class PermissionSelfTest {
                 }
             }
             try {
-                repo.login("lock@flavium.test", "Fresh@6789", Role.ASOO_CORE);
+                repo.login("lock@flavium.test", CHANGED_PASSWORD, Role.ASOO_CORE);
             } catch (PermissionDeniedException locked) {
                 return;
             }
             throw new ValidationException("The account was not locked.");
         });
         allowed("A password reset by Faculty unlocks the account", () -> {
-            repo.resetPassword(faculty, lockUser.id, "Reset@4321");
-            repo.login("lock@flavium.test", "Reset@4321", Role.ASOO_CORE);
+            repo.resetPassword(faculty, lockUser.id, RESET_PASSWORD);
+            repo.login("lock@flavium.test", RESET_PASSWORD, Role.ASOO_CORE);
         });
 
         check("Account changes are written to the administrative log", () -> {

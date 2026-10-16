@@ -84,7 +84,7 @@ public class FirestoreEmulatorInstrumentedTest {
 
     private static final String HOST = "127.0.0.1";  // forwarded to the computer by "adb reverse"
     private static final String PROJECT = "demo-flavium";
-    private static final String PASSWORD = "Temp@12345";
+    private static final String PASSWORD = DevData.newPassword();
 
     /** One installation: its database, its sign-in and its connection to the server. */
     private static class Device {
