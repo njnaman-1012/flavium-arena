@@ -26,3 +26,4 @@ ui-debug.log
 keystore.properties
 *.jks
 *.keystore
+.idea/

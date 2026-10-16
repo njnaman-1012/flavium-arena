@@ -10,7 +10,7 @@
         Debug builds use the development value in app/src/debug/res/values/config.xml
         instead of this one.
     -->
-    <string name="faculty_email" translatable="false"></string>
+    <string name="faculty_email" translatable="false">njnaman.jain1012@gmail.com</string>
 
     <!-- Development accounts and sample sports/fixtures. Off here, on in debug builds. -->
     <bool name="seed_dev_data">false</bool>
