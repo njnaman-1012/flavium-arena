@@ -137,6 +137,29 @@ public final class Ui {
     }
 
     /**
+     * The details of a fixture, one per line. Who scores it and when it was last changed
+     * are organiser information (AccessControl.canViewScoreHistory) and are left out,
+     * without a gap, for everyone else.
+     */
+    public static String fixtureDetails(String sportAndCategory, String round, String when,
+                                        String venue, String scorer, long updatedAt,
+                                        String updatedBy, boolean organiser) {
+        StringBuilder info = new StringBuilder();
+        info.append(sportAndCategory).append("\n");
+        info.append("Round: ").append(round).append("\n");
+        info.append("When: ").append(when.trim()).append("\n");
+        info.append("Venue: ").append(venue.isEmpty() ? "to be announced" : venue);
+        if (organiser) {
+            info.append("\nScorer: ").append(scorer.isEmpty() ? "not assigned" : scorer);
+            info.append("\nLast updated: ").append(DateUtil.formatTimestamp(updatedAt));
+            if (!updatedBy.isEmpty()) {
+                info.append(" by ").append(updatedBy);
+            }
+        }
+        return info.toString();
+    }
+
+    /**
      * The history of a match or event as text, newest change first: when, who, what,
      * and the reason when one was given. A match change shows the score before and
      * after; an event change is already a sentence.

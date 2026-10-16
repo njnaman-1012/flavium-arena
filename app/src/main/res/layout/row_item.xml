@@ -73,4 +73,22 @@
         android:textColor="@color/primary"
         android:textSize="11sp"
         android:textStyle="bold" />
+
+    <!-- An action on the row, such as Edit. Not focusable, so tapping the rest of the
+         card still opens it. -->
+    <TextView
+        android:id="@+id/tvRowAction"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/bg_badge"
+        android:focusable="false"
+        android:gravity="center"
+        android:minWidth="64dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:textColor="@color/primary"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
 </LinearLayout>

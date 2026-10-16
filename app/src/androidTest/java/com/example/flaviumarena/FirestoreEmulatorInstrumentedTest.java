@@ -29,6 +29,7 @@ import com.example.flaviumarena.model.RuleSet;
 import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.model.User;
+import com.example.flaviumarena.scoring.LiveScore;
 import com.example.flaviumarena.sync.Change;
 import com.example.flaviumarena.sync.PublicView;
 import com.example.flaviumarena.sync.RemoteStore;
@@ -42,6 +43,8 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreSettings;
+import com.google.firebase.firestore.MemoryCacheSettings;
 import com.google.firebase.firestore.FirebaseFirestoreException;
 import com.google.firebase.firestore.ListenerRegistration;
 
@@ -134,20 +137,27 @@ public class FirestoreEmulatorInstrumentedTest {
             }
         }
         Device d = new Device();
-        if (app == null) {
-            app = FirebaseApp.initializeApp(context, new FirebaseOptions.Builder()
-                    .setProjectId(PROJECT).setApplicationId("1:1:android:1")
-                    .setApiKey("emulator-only").build(), name);
-            FirebaseFirestore.getInstance(app).useEmulator(HOST, 8080);
-            FirebaseAuth.getInstance(app).useEmulator(HOST, 9099);
-        }
-        d.firestore = FirebaseFirestore.getInstance(app);
-        d.auth = FirebaseAuth.getInstance(app);
         try {
-            Tasks.await(d.firestore.enableNetwork());
+            if (app == null) {
+                app = FirebaseApp.initializeApp(context, new FirebaseOptions.Builder()
+                        .setProjectId(PROJECT).setApplicationId("1:1:android:1")
+                        .setApiKey("emulator-only").build(), name);
+                FirebaseAuth.getInstance(app).useEmulator(HOST, 9099);
+            } else {
+                // A device name is reused by later tests. Like a new installation, each
+                // starts with nothing kept from an earlier festival, and online.
+                Tasks.await(FirebaseFirestore.getInstance(app).terminate());
+            }
+            d.firestore = FirebaseFirestore.getInstance(app);
+            // As in the app (cloud/Cloud): Firestore keeps what it reads in memory only.
+            d.firestore.setFirestoreSettings(new FirebaseFirestoreSettings.Builder()
+                    .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
+                    .build());
+            d.firestore.useEmulator(HOST, 8080);
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+        d.auth = FirebaseAuth.getInstance(app);
         d.auth.signOut();
         d.helper = new DbHelper(context, null, withFestival);
         d.repo = new SqliteArenaRepository(d.helper);
@@ -1679,5 +1689,44 @@ public class FirestoreEmulatorInstrumentedTest {
         assertEquals(count(a, "registrations", "status = 'APPROVED'"),
                 count(core, "registrations", null));
         assertEquals(Integer.valueOf(4), core.repo.getMatch(live.id).scoreA);
+    }
+
+    @Test
+    public void liveTapsAndARemovedBranchReachTheOtherDeviceByThemselves() throws Exception {
+        final Device core = join("device-b", DevData.CORE_EMAIL, Role.CORE, null);
+        final Match live = liveMatch(a);
+        final int start = live.scoreA == null ? 0 : live.scoreA;
+        ListenerRegistration onB = live(core);
+        try {
+            // Three taps on + for side A, each saved and sent as it happens.
+            for (int i = 0; i < 3; i++) {
+                Match m = a.repo.getMatch(live.id);
+                int[] score = LiveScore.tap(m.scoreA, m.scoreB, true, 1);
+                a.repo.updateScore(facultyA, live.id, m.version, score[0], score[1], m.scoreNote,
+                        m.status, m.currentPeriod, null, null);
+                send(a);
+            }
+            eventually("the taps on device B", () -> {
+                Match m = core.repo.getMatch(live.id);
+                return m.scoreA != null && m.scoreA == start + 3;
+            });
+
+            // A branch removed on device A: gone from B's active list, its data kept.
+            final String branchId = one("SELECT b.id FROM branches b WHERE b.active = 1 AND "
+                    + "EXISTS (SELECT 1 FROM registrations r WHERE r.branch_id = b.id) AND NOT "
+                    + "EXISTS (SELECT 1 FROM users u WHERE u.role = 'CAPTAIN' AND u.active = 1 "
+                    + "AND u.branch_id = b.id) LIMIT 1");
+            assertNotNull("The sample data has such a branch", branchId);
+            long registrations = count(core, "registrations", "branch_id = '" + branchId + "'");
+            a.repo.setBranchActive(facultyA, branchId, false);
+            send(a);
+            eventually("the removed branch on device B",
+                    () -> !core.repo.getBranch(branchId).active);
+            assertEquals(registrations,
+                    count(core, "registrations", "branch_id = '" + branchId + "'"));
+            assertEquals(0, a.sync.pendingCount());
+        } finally {
+            onB.remove();
+        }
     }
 }

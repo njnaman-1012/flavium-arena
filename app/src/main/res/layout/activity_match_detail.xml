@@ -205,7 +205,9 @@
                         android:text="Set status" />
                 </LinearLayout>
 
-                <!-- Sets engine: volleyball, badminton, table tennis, squash, tennis... -->
+                <!-- Sets engine: volleyball, badminton, table tennis, squash, tennis...
+                     The big numbers are the points of the game or set in play; − and +
+                     change exactly that game or set. -->
                 <LinearLayout
                     android:id="@+id/panelSets"
                     android:layout_width="match_parent"
@@ -215,72 +217,19 @@
 
                     <TextView
                         android:id="@+id/tvCurrentSet"
-                        style="@style/Arena.Label"
-                        android:text="Set 1" />
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center"
+                        android:text="Set 1"
+                        android:textColor="@color/primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <Button
-                            android:id="@+id/btnPointA"
-                            android:layout_width="0dp"
-                            android:layout_height="72dp"
-                            android:layout_weight="1"
-                            android:text="+1 A" />
-
-                        <Button
-                            android:id="@+id/btnPointB"
-                            android:layout_width="0dp"
-                            android:layout_height="72dp"
-                            android:layout_marginStart="10dp"
-                            android:layout_weight="1"
-                            android:text="+1 B" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <Button
-                            android:id="@+id/btnUndoA"
-                            style="@style/Widget.Arena.Button.Soft"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="Take 1 back" />
-
-                        <Button
-                            android:id="@+id/btnUndoB"
-                            style="@style/Widget.Arena.Button.Soft"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:layout_weight="1"
-                            android:text="Take 1 back" />
-                    </LinearLayout>
-
-                    <Button
-                        android:id="@+id/btnEditSet"
-                        style="@style/Widget.Arena.Button.Soft"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Correct a set" />
-                </LinearLayout>
-
-                <!-- Score engine: football, basketball -->
-                <LinearLayout
-                    android:id="@+id/panelScore"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:visibility="gone">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
                         android:baselineAligned="false"
                         android:orientation="horizontal">
 
@@ -288,41 +237,252 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:orientation="vertical">
+                            android:background="@drawable/bg_card_soft"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical"
+                            android:padding="12dp">
 
                             <TextView
-                                android:id="@+id/tvScoreLabelA"
-                                style="@style/Arena.Label"
+                                android:id="@+id/tvSetNameA"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
                                 android:maxLines="1"
-                                android:text="Side A" />
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
 
-                            <EditText
-                                android:id="@+id/etScoreA"
+                            <TextView
+                                android:id="@+id/tvSetPointsA"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="@color/text_primary"
+                                android:textSize="52sp"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:hint="Score"
-                                android:inputType="number" />
+                                android:orientation="horizontal">
+
+                                <Button
+                                    android:id="@+id/btnUndoA"
+                                    style="@style/Widget.Arena.Button.Soft"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Take one point back"
+                                    android:text="−"
+                                    android:textSize="26sp" />
+
+                                <Button
+                                    android:id="@+id/btnPointA"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_marginStart="8dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Add one point"
+                                    android:text="+"
+                                    android:textSize="26sp" />
+                            </LinearLayout>
                         </LinearLayout>
 
                         <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="12dp"
+                            android:layout_marginStart="10dp"
                             android:layout_weight="1"
-                            android:orientation="vertical">
+                            android:background="@drawable/bg_card_soft"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:id="@+id/tvSetNameB"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:maxLines="1"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvSetPointsB"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="@color/text_primary"
+                                android:textSize="52sp"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal">
+
+                                <Button
+                                    android:id="@+id/btnUndoB"
+                                    style="@style/Widget.Arena.Button.Soft"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Take one point back"
+                                    android:text="−"
+                                    android:textSize="26sp" />
+
+                                <Button
+                                    android:id="@+id/btnPointB"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_marginStart="8dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Add one point"
+                                    android:text="+"
+                                    android:textSize="26sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnEditSet"
+                        style="@style/Widget.Arena.Button.Soft"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="Correct a set" />
+                </LinearLayout>
+
+                <!-- Score engine: football, basketball. Every tap is saved at once. -->
+                <LinearLayout
+                    android:id="@+id/panelScore"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/tvLiveHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_card_soft"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:id="@+id/tvScoreLabelA"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:maxLines="1"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvLiveScoreA"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="@color/text_primary"
+                                android:textSize="52sp"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal">
+
+                                <Button
+                                    android:id="@+id/btnMinusA"
+                                    style="@style/Widget.Arena.Button.Soft"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Take one back"
+                                    android:text="−"
+                                    android:textSize="26sp" />
+
+                                <Button
+                                    android:id="@+id/btnPlusA"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_marginStart="8dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Add one"
+                                    android:text="+"
+                                    android:textSize="26sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_card_soft"
+                            android:gravity="center_horizontal"
+                            android:orientation="vertical"
+                            android:padding="12dp">
 
                             <TextView
                                 android:id="@+id/tvScoreLabelB"
-                                style="@style/Arena.Label"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
                                 android:maxLines="1"
-                                android:text="Side B" />
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
 
-                            <EditText
-                                android:id="@+id/etScoreB"
+                            <TextView
+                                android:id="@+id/tvLiveScoreB"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="@color/text_primary"
+                                android:textSize="52sp"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:hint="Score"
-                                android:inputType="number" />
+                                android:orientation="horizontal">
+
+                                <Button
+                                    android:id="@+id/btnMinusB"
+                                    style="@style/Widget.Arena.Button.Soft"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Take one back"
+                                    android:text="−"
+                                    android:textSize="26sp" />
+
+                                <Button
+                                    android:id="@+id/btnPlusB"
+                                    android:layout_width="0dp"
+                                    android:layout_height="60dp"
+                                    android:layout_marginStart="8dp"
+                                    android:layout_weight="1"
+                                    android:contentDescription="Add one"
+                                    android:text="+"
+                                    android:textSize="26sp" />
+                            </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
 
@@ -336,59 +496,13 @@
                         android:layout_width="match_parent"
                         android:layout_height="50dp" />
 
-                    <!-- Only when the rules use a shoot-out to settle a level match -->
-                    <LinearLayout
-                        android:id="@+id/panelPenalties"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:visibility="gone">
-
-                        <TextView
-                            style="@style/Arena.Label"
-                            android:text="Penalty shoot-out (only if the score is level)" />
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal">
-
-                            <EditText
-                                android:id="@+id/etPenA"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:hint="Side A"
-                                android:inputType="number" />
-
-                            <EditText
-                                android:id="@+id/etPenB"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="12dp"
-                                android:layout_weight="1"
-                                android:hint="Side B"
-                                android:inputType="number" />
-                        </LinearLayout>
-                    </LinearLayout>
-
-                    <TextView
-                        style="@style/Arena.Label"
-                        android:text="Score details (optional)" />
-
-                    <EditText
-                        android:id="@+id/etNote"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="Anything worth noting"
-                        android:inputType="text" />
-
                     <Button
-                        android:id="@+id/btnSaveScore"
+                        android:id="@+id/btnScoreDetails"
+                        style="@style/Widget.Arena.Button.Soft"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="Save score" />
+                        android:layout_marginTop="10dp"
+                        android:text="Score details" />
 
                     <Button
                         android:id="@+id/btnAddEvent"

@@ -18,6 +18,18 @@ Firebase is planned as the next stage (see [Not built yet](#not-built-yet)).
   win-by-two (badminton, volleyball, table tennis, squash, lawn tennis), cricket innings,
   win/draw/loss (chess), timed races with heats and finals (athletics, swimming), and
   measured throws with attempts and fouls (discus, shot put).
+- **Live scoring with + and −.** A live match shows each side's score large, with big
+  − and + buttons. Every tap is saved at once (no Save button), adds a line to the score
+  history and reaches other devices by itself. A score never goes below 0. Sports played
+  in sets or games score the game in play; "Correct a set" and "Score details" (note,
+  shoot-out, exact correction) are for fixing mistakes, not for live scoring.
+- **Organiser details stay with organisers.** Who scores a fixture and when it was last
+  changed are shown to Faculty, Cores, Asoo Cores and the Coach of the sport only
+  (`Ui.fixtureDetails`, `AccessControl.canViewScoreHistory`); visitors and Branch CRs see
+  sport, round, time and venue.
+- **Branches** have an Edit button for Faculty: rename, change the short code, remove or
+  restore. Removing a branch deactivates it; its registrations, fixtures and results are
+  kept, and a branch with an active Branch CR cannot be removed.
 - **Standings** worked out from official results: a league table, the rounds of a
   knockout, or the placings of a final.
 - **Medal table** by branch: gold, silver, bronze and total. There are no medal points.
@@ -291,6 +303,14 @@ Nothing has to be pressed in normal use:
   10, 20 and 40 seconds and then every minute while it is open.
 - A change whose acknowledgement was lost is recognised when it is sent again and is
   not written twice.
+- Two devices writing at the same moment: the second write can be refused by the
+  security rules because the revision counter has just moved. The adapter tries a
+  refused change again (up to three times, from a fresh read, after a short random
+  pause), so a change that merely collided is not lost; one the rules really forbid is
+  refused every time.
+- Firestore keeps what it reads in memory only, and listeners use only what the server
+  has confirmed, so nothing kept from an earlier session or an earlier festival can come
+  back as if it were current. The app's own database is the offline copy.
 - Edit screens read their record once and are never reloaded under the person typing.
   If another device changes the same record meanwhile, the person is told; saving a
   category or registration then asks before replacing the other change, and fixtures

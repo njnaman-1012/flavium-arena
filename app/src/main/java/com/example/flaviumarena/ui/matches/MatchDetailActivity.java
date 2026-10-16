@@ -5,7 +5,9 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.text.InputType;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -27,10 +29,10 @@ import com.example.flaviumarena.model.Registration;
 import com.example.flaviumarena.model.RuleSet;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.scoring.LiveLink;
+import com.example.flaviumarena.scoring.LiveScore;
 import com.example.flaviumarena.scoring.SetRules;
 import com.example.flaviumarena.scoring.SetScoring;
 import com.example.flaviumarena.scoring.TennisGame;
-import com.example.flaviumarena.util.DateUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +50,9 @@ import java.util.List;
  *   CRICKET  innings totals, plus a button that opens the match on CricHeroes
  *
  * The controls appear only for someone who may score this match, and the repository
- * checks every change again.
+ * checks every change again. Live scoring is done with + and − buttons: every tap is
+ * saved at once (and so reaches other devices by itself); there is no Save button.
+ * Who scores the match and when it was last changed are shown to organisers only.
  *
  * This class decides what is shown and what a tap does. The wording of a match's state
  * is in scoring.MatchSummary, the rules of sets are in scoring.SetScoring, and the
@@ -61,7 +65,7 @@ public class MatchDetailActivity extends BaseActivity {
     private List<MatchPeriod> periods = new ArrayList<>();
     private RuleSet rules = new RuleSet();
 
-    private EditText etScoreA, etScoreB, etNote, etReason, etPenA, etPenB;
+    private EditText etReason;
     private Spinner spStatus, spPeriod;
 
     @Override
@@ -70,12 +74,7 @@ public class MatchDetailActivity extends BaseActivity {
         setupScreen(R.layout.activity_match_detail, "Match", true);
         matchId = getIntent().getStringExtra(EXTRA_MATCH_ID);
 
-        etScoreA = findViewById(R.id.etScoreA);
-        etScoreB = findViewById(R.id.etScoreB);
-        etNote = findViewById(R.id.etNote);
         etReason = findViewById(R.id.etReason);
-        etPenA = findViewById(R.id.etPenA);
-        etPenB = findViewById(R.id.etPenB);
         spStatus = findViewById(R.id.spStatus);
         spPeriod = findViewById(R.id.spPeriod);
         setSpinnerItems(spStatus, Match.STATUS_LABELS);
@@ -91,9 +90,27 @@ public class MatchDetailActivity extends BaseActivity {
         findViewById(R.id.btnUndoB).setOnClickListener(v -> takeBack(false));
         findViewById(R.id.btnEditSet).setOnClickListener(v -> showSetDialog());
 
-        // One score each
-        findViewById(R.id.btnSaveScore).setOnClickListener(v -> saveScore());
+        // One score each: + and − are saved at once; the period too, as soon as it is chosen.
+        findViewById(R.id.btnPlusA).setOnClickListener(v -> bump(true, 1));
+        findViewById(R.id.btnMinusA).setOnClickListener(v -> bump(true, -1));
+        findViewById(R.id.btnPlusB).setOnClickListener(v -> bump(false, 1));
+        findViewById(R.id.btnMinusB).setOnClickListener(v -> bump(false, -1));
+        findViewById(R.id.btnScoreDetails).setOnClickListener(v -> showScoreDetails());
         findViewById(R.id.btnAddEvent).setOnClickListener(v -> showEventDialog());
+        spPeriod.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                // Also called when the screen sets the current period: only a real change
+                // is saved.
+                if (match != null && position != match.currentPeriod) {
+                    savePeriod(position);
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
 
         // Win, draw, loss
         findViewById(R.id.btnWinA).setOnClickListener(v -> saveResult(1, 0));
@@ -300,18 +317,10 @@ public class MatchDetailActivity extends BaseActivity {
     }
 
     private void showDetails() {
-        StringBuilder info = new StringBuilder();
-        info.append(match.sportName).append(", ").append(match.categoryName).append("\n");
-        info.append("Round: ").append(match.round).append("\n");
-        info.append("When: ").append(match.date).append(" ").append(match.time).append("\n");
-        info.append("Venue: ").append(match.venue.isEmpty() ? "to be announced" : match.venue);
-        info.append("\nScorer: ")
-                .append(match.assignedName.isEmpty() ? "not assigned" : match.assignedName);
-        info.append("\nLast updated: ").append(DateUtil.formatTimestamp(match.updatedAt));
-        if (!match.updatedByName.isEmpty()) {
-            info.append(" by ").append(match.updatedByName);
-        }
-        setText(R.id.tvMatchInfo, info.toString());
+        setText(R.id.tvMatchInfo, Ui.fixtureDetails(match.sportName + ", " + match.categoryName,
+                match.round, match.date + " " + match.time, match.venue, match.assignedName,
+                match.updatedAt, match.updatedByName,
+                AccessControl.canViewScoreHistory(userIn(match.sportId))));
     }
 
     // =====================================================================
@@ -364,6 +373,15 @@ public class MatchDetailActivity extends BaseActivity {
         SetScoring.State state = setState();
         boolean live = Match.STATUS_LIVE.equals(match.status);
 
+        // The big numbers belong to the game or set in play; + and − change that one only.
+        MatchPeriod current = state.currentSet == 0 ? null : period(state.currentSet);
+        int a = current == null ? 0 : current.scoreA;
+        int b = current == null ? 0 : current.scoreB;
+        setText(R.id.tvSetNameA, match.sideAShort());
+        setText(R.id.tvSetNameB, match.sideBShort());
+        setText(R.id.tvSetPointsA, String.valueOf(a));
+        setText(R.id.tvSetPointsB, String.valueOf(b));
+
         TextView tvCurrent = findViewById(R.id.tvCurrentSet);
         if (state.currentSet == 0) {
             tvCurrent.setText("The match is decided.");
@@ -371,10 +389,10 @@ public class MatchDetailActivity extends BaseActivity {
             tvCurrent.setText("Set the status to Live to score " + setRules.unit.toLowerCase()
                     + " " + state.currentSet + ".");
         } else {
-            MatchPeriod current = period(state.currentSet);
-            int a = current == null ? 0 : current.scoreA;
-            int b = current == null ? 0 : current.scoreB;
-            String text = setRules.unit + " " + state.currentSet + ": " + a + " - " + b;
+            String text = setRules.unit + " " + state.currentSet;
+            if (setRules.pointByPoint && current != null && current.ptA + current.ptB > 0) {
+                text += "  ·  " + TennisGame.label(current.ptA, current.ptB);
+            }
             // Say plainly when the target has been reached but the set is not won yet.
             int target = setRules.targetOf(state.currentSet);
             if (Math.max(a, b) >= target && setRules.winByOf(state.currentSet) > 1) {
@@ -384,29 +402,35 @@ public class MatchDetailActivity extends BaseActivity {
         }
 
         boolean canAdd = live && state.currentSet != 0;
-        Button btnA = findViewById(R.id.btnPointA);
-        Button btnB = findViewById(R.id.btnPointB);
-        btnA.setText((setRules.pointByPoint ? "Point: " : "+1  ") + match.sideAShort());
-        btnB.setText((setRules.pointByPoint ? "Point: " : "+1  ") + match.sideBShort());
-        btnA.setEnabled(canAdd);
-        btnB.setEnabled(canAdd);
+        enable(R.id.btnPointA, canAdd);
+        enable(R.id.btnPointB, canAdd);
         // Taking a point back is for plain point counting; tennis games are corrected
         // through "Correct a set".
         show(findViewById(R.id.btnUndoA), !setRules.pointByPoint);
         show(findViewById(R.id.btnUndoB), !setRules.pointByPoint);
-        findViewById(R.id.btnUndoA).setEnabled(canAdd);
-        findViewById(R.id.btnUndoB).setEnabled(canAdd);
+        enable(R.id.btnUndoA, canAdd && a > 0);
+        enable(R.id.btnUndoB, canAdd && b > 0);
         ((Button) findViewById(R.id.btnEditSet)).setText("Correct a " + setRules.unit.toLowerCase());
     }
 
     private void showScoreControls() {
         setText(R.id.tvScoreLabelA, match.sideAShort());
         setText(R.id.tvScoreLabelB, match.sideBShort());
-        etScoreA.setText(match.scoreA == null ? "" : String.valueOf(match.scoreA));
-        etScoreB.setText(match.scoreB == null ? "" : String.valueOf(match.scoreB));
-        etNote.setText(match.scoreNote);
-        etPenA.setText(match.penA == null ? "" : String.valueOf(match.penA));
-        etPenB.setText(match.penB == null ? "" : String.valueOf(match.penB));
+        int a = match.scoreA == null ? 0 : match.scoreA;
+        int b = match.scoreB == null ? 0 : match.scoreB;
+        setText(R.id.tvLiveScoreA, String.valueOf(a));
+        setText(R.id.tvLiveScoreB, String.valueOf(b));
+        boolean live = Match.STATUS_LIVE.equals(match.status);
+        TextView tvHint = findViewById(R.id.tvLiveHint);
+        show(tvHint, !live);
+        tvHint.setText("Set the status to Live to score with + and −.");
+        enable(R.id.btnPlusA, live);
+        enable(R.id.btnPlusB, live);
+        enable(R.id.btnMinusA, live && a > 0);
+        enable(R.id.btnMinusB, live && b > 0);
+        // Corrections, notes and the shoot-out, while a score may be recorded at all.
+        show(findViewById(R.id.btnScoreDetails), !Match.STATUS_UPCOMING.equals(match.status)
+                && !Match.STATUS_POSTPONED.equals(match.status));
 
         // The period list: halves or quarters, then extra time and the shoot-out.
         int count = rules.getInt("periods", 0);
@@ -422,11 +446,20 @@ public class MatchDetailActivity extends BaseActivity {
             spPeriod.setSelection(Math.min(match.currentPeriod, count + 2));
         }
 
-        // A shoot-out is offered only where a level match has to be settled.
-        boolean needsWinner = Category.FORMAT_KNOCKOUT.equals(match.categoryFormat)
-                || RuleSet.NO.equals(rules.get("allow_draw", ""));
-        show(findViewById(R.id.panelPenalties), needsWinner);
         show(findViewById(R.id.btnAddEvent), rules.isYes("track_events"));
+    }
+
+    /** A shoot-out is recorded only where a level match has to be settled. */
+    private boolean needsWinner() {
+        return Category.FORMAT_KNOCKOUT.equals(match.categoryFormat)
+                || RuleSet.NO.equals(rules.get("allow_draw", ""));
+    }
+
+    /** A score button that cannot be used now is also shown faded. */
+    private void enable(int buttonId, boolean enabled) {
+        View button = findViewById(buttonId);
+        button.setEnabled(enabled);
+        button.setAlpha(enabled ? 1f : 0.35f);
     }
 
     private SetScoring.State setState() {
@@ -503,20 +536,53 @@ public class MatchDetailActivity extends BaseActivity {
 
     // ----- One score each -----
 
-    /** Empty box means "no score yet". */
-    private Integer numberIn(EditText field) {
-        String text = textOf(field);
-        return text.isEmpty() ? null : Integer.valueOf(numberOf(field, -1));
+    /**
+     * One more, or one fewer, for a side, saved at once. A match without a score starts
+     * at 0 - 0. A score never goes below 0. A shoot-out is kept only while the score is
+     * still level.
+     */
+    private void bump(boolean sideA, int delta) {
+        int[] score = LiveScore.tap(match.scoreA, match.scoreB, sideA, delta);
+        if (score == null) {
+            return;
+        }
+        saveScore(score[0], score[1], match.scoreNote, match.currentPeriod, match.penA,
+                match.penB);
     }
 
-    private void saveScore() {
-        int period = spPeriod.getVisibility() == View.VISIBLE
-                ? spPeriod.getSelectedItemPosition() : match.currentPeriod;
-        boolean penalties = findViewById(R.id.panelPenalties).getVisibility() == View.VISIBLE;
-        change(() -> repo.updateScore(currentUser, matchId, match.version, numberIn(etScoreA),
-                numberIn(etScoreB), textOf(etNote), match.status, period,
-                penalties ? numberIn(etPenA) : match.penA,
-                penalties ? numberIn(etPenB) : match.penB));
+    private void savePeriod(int period) {
+        saveScore(match.scoreA, match.scoreB, match.scoreNote, period, match.penA, match.penB);
+    }
+
+    private void saveScore(Integer a, Integer b, String note, int period, Integer penA,
+                           Integer penB) {
+        boolean level = LiveScore.keepsShootOut(a, b);
+        change(() -> repo.updateScore(currentUser, matchId, match.version, a, b, note,
+                match.status, period, level ? penA : null, level ? penB : null));
+    }
+
+    /** Typing the score, a note and the shoot-out: for corrections, not for live scoring. */
+    private void showScoreDetails() {
+        boolean shootOut = needsWinner();
+        int a = match.scoreA == null ? 0 : match.scoreA;
+        int b = match.scoreB == null ? 0 : match.scoreB;
+        FormDialog dialog = new FormDialog(this, "Score details");
+        if (shootOut) {
+            dialog.numbers(new String[]{match.sideAShort(), match.sideBShort(),
+                            "Shoot-out: " + match.sideAShort(), "Shoot-out: " + match.sideBShort()},
+                    new int[]{a, b, match.penA == null ? 0 : match.penA,
+                            match.penB == null ? 0 : match.penB});
+        } else {
+            dialog.numbers(new String[]{match.sideAShort(), match.sideBShort()},
+                    new int[]{a, b});
+        }
+        dialog.text("Note (optional)", match.scoreNote, InputType.TYPE_CLASS_TEXT);
+        dialog.show(v -> {
+            // A shoot-out of 0 - 0 means there was none.
+            boolean pens = shootOut && v.numbers[2] + v.numbers[3] > 0;
+            saveScore(v.numbers[0], v.numbers[1], v.text, match.currentPeriod,
+                    pens ? v.numbers[2] : null, pens ? v.numbers[3] : null);
+        });
     }
 
     private void showEventDialog() {

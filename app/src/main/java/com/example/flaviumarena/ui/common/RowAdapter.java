@@ -35,6 +35,10 @@ public class RowAdapter extends BaseAdapter {
         public String imagePath;
         /** Text for the circle (for example a rank), or null to use the title's first letter. */
         public String circleText;
+        /** A button at the end of the row, such as "Edit", or null for none. */
+        public String actionText;
+        /** What the button does. */
+        public Runnable onAction;
 
         public Row(String id, String title, String subtitle, String badge) {
             this(id, title, subtitle, badge, 0);
@@ -118,6 +122,13 @@ public class RowAdapter extends BaseAdapter {
         badge.setText(row.badge);
         subtitle.setVisibility(isEmpty(row.subtitle) ? View.GONE : View.VISIBLE);
         badge.setVisibility(isEmpty(row.badge) ? View.GONE : View.VISIBLE);
+        TextView action = view.findViewById(R.id.tvRowAction);
+        if (action != null) {
+            action.setVisibility(isEmpty(row.actionText) ? View.GONE : View.VISIBLE);
+            action.setText(row.actionText);
+            action.setOnClickListener(row.onAction == null ? null : v -> row.onAction.run());
+            action.setClickable(row.onAction != null);
+        }
     }
 
     /** Shows a photo cropped to a circle. */

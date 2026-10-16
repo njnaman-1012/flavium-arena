@@ -2,6 +2,7 @@ package com.example.flaviumarena;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -29,6 +30,7 @@ import com.example.flaviumarena.model.RuleSet;
 import com.example.flaviumarena.model.Sport;
 import com.example.flaviumarena.model.SportTemplate;
 import com.example.flaviumarena.model.User;
+import com.example.flaviumarena.scoring.LiveScore;
 import com.example.flaviumarena.util.DateUtil;
 
 import org.junit.After;
@@ -468,5 +470,54 @@ public class ScoringInstrumentedTest {
         // The second game is at 9-11: one more point to B makes it 9-12, still in play.
         repo.saveSetScore(asoo, semi.id, semi.version, 2, 9, 12, 0, 0);
         assertEquals(Match.STATUS_LIVE, match(semi.id).status);
+    }
+
+    // ----- Live scoring with + and − -----
+
+    /** One tap, saved at once, the way the match screen does it. */
+    private void tap(User who, String id, boolean sideA, int delta) {
+        Match m = match(id);
+        int[] score = LiveScore.tap(m.scoreA, m.scoreB, sideA, delta);
+        assertNotNull("A tap below 0 is never sent", score);
+        repo.updateScore(who, id, m.version, score[0], score[1], m.scoreNote, m.status,
+                m.currentPeriod, null, null);
+    }
+
+    @Test
+    public void everyTapIsSavedAtOnceWithItsHistoryAndNeverGoesBelowZero() {
+        Category c = category("football", "Tap League");
+        String id = fixture(c, entry(c, 0, null), entry(c, 1, null));
+        // Before kick-off there is nothing to tap.
+        refused(ValidationException.class, () -> tap(asoo, id, true, 1));
+        status(id, Match.STATUS_LIVE);
+        int before = repo.getScoreAudit(asoo, id).size();
+
+        tap(asoo, id, true, 1);
+        assertEquals(Integer.valueOf(1), match(id).scoreA);
+        assertEquals(Integer.valueOf(0), match(id).scoreB);
+        tap(asoo, id, false, 1);
+        tap(asoo, id, false, 1);
+        tap(asoo, id, false, -1);
+        assertEquals(Integer.valueOf(1), match(id).scoreA);
+        assertEquals(Integer.valueOf(1), match(id).scoreB);
+        // Each tap is one stored change with one history line.
+        assertEquals(before + 4, repo.getScoreAudit(asoo, id).size());
+
+        // Below 0 is impossible from the screen, and the repository refuses it as well.
+        tap(asoo, id, true, -1);
+        assertNull(LiveScore.tap(match(id).scoreA, match(id).scoreB, true, -1));
+        refused(ValidationException.class, () -> repo.updateScore(asoo, id, match(id).version,
+                -1, 1, "", Match.STATUS_LIVE));
+
+        // A tap based on a version that has moved on is refused, not applied twice.
+        int stale = match(id).version - 1;
+        refused(ConflictException.class, () -> repo.updateScore(asoo, id, stale, 5, 5, "",
+                Match.STATUS_LIVE));
+
+        // Only whoever may score this match can tap.
+        User captain = repo.login(DevData.CAPTAIN_EMAIL, DevData.CAPTAIN_PASSWORD, Role.CAPTAIN);
+        refused(PermissionDeniedException.class, () -> tap(captain, id, true, 1));
+        refused(PermissionDeniedException.class, () -> tap(null, id, true, 1));
+        assertEquals(Integer.valueOf(0), match(id).scoreA);
     }
 }

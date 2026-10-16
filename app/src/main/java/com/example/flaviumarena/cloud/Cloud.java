@@ -33,6 +33,8 @@ import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreSettings;
+import com.google.firebase.firestore.MemoryCacheSettings;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Source;
 
@@ -137,6 +139,12 @@ public final class Cloud {
         }
         auth = FirebaseAuth.getInstance();
         firestore = FirebaseFirestore.getInstance();
+        // The app's own database is the offline copy. Firestore keeps what it has read in
+        // memory only, so nothing it kept from an earlier session (perhaps of a festival
+        // that has since been reset) can ever come back as if it were current.
+        firestore.setFirestoreSettings(new FirebaseFirestoreSettings.Builder()
+                .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
+                .build());
         // Release builds: the real project, always. Debug builds may be pointed at the
         // Firebase Local Emulator Suite (see LocalServers in app/src/debug).
         LocalServers.use(context, firestore, auth);

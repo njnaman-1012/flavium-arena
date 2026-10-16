@@ -204,17 +204,22 @@ public class RoundDetailActivity extends BaseActivity {
     }
 
     private void showDetails() {
+        // Who scores it and when it last changed are organiser information.
+        boolean organiser = AccessControl.canViewScoreHistory(userIn(round.sportId));
         StringBuilder info = new StringBuilder();
         info.append("When: ").append(round.date)
                 .append(round.time.isEmpty() ? "" : " " + round.time);
         info.append("\nVenue: ").append(round.venue.isEmpty() ? "to be announced" : round.venue);
-        info.append("\nScorer: ")
-                .append(round.assignedName.isEmpty() ? "not assigned" : round.assignedName);
-
+        if (organiser) {
+            info.append("\nScorer: ")
+                    .append(round.assignedName.isEmpty() ? "not assigned" : round.assignedName);
+        }
         info.append("\n").append(EventSummary.rules(round));
-        info.append("\nLast updated: ").append(DateUtil.formatTimestamp(round.updatedAt));
-        if (!round.updatedByName.isEmpty()) {
-            info.append(" by ").append(round.updatedByName);
+        if (organiser) {
+            info.append("\nLast updated: ").append(DateUtil.formatTimestamp(round.updatedAt));
+            if (!round.updatedByName.isEmpty()) {
+                info.append(" by ").append(round.updatedByName);
+            }
         }
         setText(R.id.tvRoundInfo, info.toString());
     }

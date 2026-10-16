@@ -31,6 +31,7 @@
         <activity android:name=".ui.admin.SettingsActivity" />
         <activity android:name=".ui.branches.BranchesActivity" />
         <activity android:name=".ui.branches.BranchPageActivity" />
+        <activity android:name=".ui.branches.BranchEditActivity" />
         <activity android:name=".ui.auth.LoginActivity" />
         <activity android:name=".ui.sports.SportsActivity" />
         <activity android:name=".ui.sports.SportCatalogueActivity" />

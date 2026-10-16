@@ -109,8 +109,36 @@ public class FirestoreRemoteStore implements RemoteStore {
         boolean noFestival;
     }
 
+    /** How often a refused change is tried again before it counts as refused. */
+    private static final int REFUSED_ATTEMPTS = 3;
+
+    /**
+     * Sends one change. When two devices write at the same moment, the second write can be
+     * checked by the security rules against the revision counter the first one has
+     * already moved, and is then refused instead of being retried. So a refusal is tried
+     * again, from a fresh read, after a short random pause: a change that merely collided
+     * goes through, and one the rules really forbid is refused every time.
+     */
     @Override
     public long push(final Change change, final long baseRev) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return pushOnce(change, baseRev);
+            } catch (Refused refused) {
+                if (attempt >= REFUSED_ATTEMPTS) {
+                    throw refused;
+                }
+                try {
+                    Thread.sleep(150L * attempt + (long) (Math.random() * 250));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw refused;
+                }
+            }
+        }
+    }
+
+    private long pushOnce(final Change change, final long baseRev) {
         final String id = change.table + ":" + change.key;
         final boolean publicTable = !PublicView.isPrivate(change.table)
                 && !PublicView.isSplit(change.table);

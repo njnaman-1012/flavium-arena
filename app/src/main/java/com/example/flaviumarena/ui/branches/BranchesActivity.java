@@ -2,13 +2,9 @@ package com.example.flaviumarena.ui.branches;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.view.View;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
-
-import androidx.appcompat.app.AlertDialog;
 
 import com.example.flaviumarena.R;
 import com.example.flaviumarena.ui.common.BaseActivity;
@@ -21,7 +17,9 @@ import java.util.List;
 
 /**
  * The branches that compete. Everyone can browse them and open a branch's page.
- * Faculty can also add, rename, deactivate and reactivate branches.
+ * Whoever may manage branches (Faculty) also sees an Edit button on every branch, which
+ * opens BranchEditActivity (rename, remove, restore), and "Add branch". Removed branches
+ * are listed after the active ones, for them only.
  */
 public class BranchesActivity extends BaseActivity {
 
@@ -42,17 +40,9 @@ public class BranchesActivity extends BaseActivity {
             intent.putExtra(EXTRA_BRANCH_ID, shown.get(position).id);
             startActivity(intent);
         });
-        listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            if (!AccessControl.canManageBranches(currentUser)) {
-                return false;
-            }
-            showOptions(shown.get(position));
-            return true;
-        });
-
         Button btnAdd = findViewById(R.id.btnAdd);
         btnAdd.setText("Add branch");
-        btnAdd.setOnClickListener(v -> showBranchDialog(null));
+        btnAdd.setOnClickListener(v -> openEditor(null));
     }
 
     @Override
@@ -68,7 +58,7 @@ public class BranchesActivity extends BaseActivity {
         TextView tvHeader = findViewById(R.id.tvHeader);
         show(tvHeader, true);
         tvHeader.setText(canManage
-                ? "Tap a branch to open its page. Long-press to rename or deactivate it."
+                ? "Tap a branch to view it, or use Edit to manage it."
                 : "Tap a branch to see its teams, fixtures and results.");
         show(findViewById(R.id.btnAdd), canManage);
         load();
@@ -78,63 +68,35 @@ public class BranchesActivity extends BaseActivity {
         boolean canManage = AccessControl.canManageBranches(currentUser);
         shown.clear();
         List<RowAdapter.Row> rows = new ArrayList<>();
-        for (Branch b : repo.getBranches()) {
-            // Deactivated branches are only listed for the people who can reactivate them.
-            if (!b.active && !canManage) {
-                continue;
+        // Active branches first; removed ones after them, and only for whoever can restore them.
+        for (boolean active : new boolean[]{true, false}) {
+            for (Branch b : repo.getBranches()) {
+                if (b.active != active || (!b.active && !canManage)) {
+                    continue;
+                }
+                shown.add(b);
+                int entries = repo.getRegistrationsOfBranch(currentUser, b.id).size();
+                RowAdapter.Row row = new RowAdapter.Row(b.id, b.name,
+                        entries + (entries == 1 ? " registration" : " registrations"),
+                        b.active ? "" : "Removed");
+                row.circleText = b.code.isEmpty() ? null : b.code;
+                if (canManage) {
+                    row.actionText = "Edit";
+                    row.onAction = () -> openEditor(b.id);
+                }
+                rows.add(row);
             }
-            shown.add(b);
-            int entries = repo.getRegistrationsOfBranch(currentUser, b.id).size();
-            RowAdapter.Row row = new RowAdapter.Row(b.id, b.name,
-                    entries + (entries == 1 ? " registration" : " registrations"),
-                    b.active ? "" : "Deactivated");
-            row.circleText = b.code.isEmpty() ? null : b.code;
-            rows.add(row);
         }
         adapter.setRows(rows);
     }
 
-    private void showOptions(Branch branch) {
-        String[] options = {"Rename or change code", branch.active ? "Deactivate" : "Reactivate"};
-        new AlertDialog.Builder(this)
-                .setTitle(branch.name)
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        showBranchDialog(branch);
-                    } else {
-                        confirm((branch.active ? "Deactivate " : "Reactivate ") + branch.name
-                                + "?", () -> {
-                            attempt(() -> repo.setBranchActive(currentUser, branch.id,
-                                    !branch.active));
-                            load();
-                        });
-                    }
-                })
-                .show();
-    }
-
-    /** Add a new branch (existing == null) or edit one. */
-    private void showBranchDialog(Branch existing) {
-        View form = getLayoutInflater().inflate(R.layout.dialog_branch, null);
-        EditText etName = form.findViewById(R.id.etBranchName);
-        EditText etCode = form.findViewById(R.id.etBranchCode);
-        if (existing != null) {
-            etName.setText(existing.name);
-            etCode.setText(existing.code);
+    /** The Edit Branch screen; with no id it adds a branch. */
+    private void openEditor(String branchId) {
+        Intent intent = new Intent(this, BranchEditActivity.class);
+        if (branchId != null) {
+            intent.putExtra(EXTRA_BRANCH_ID, branchId);
         }
-        new AlertDialog.Builder(this)
-                .setTitle(existing == null ? "Add branch" : "Edit branch")
-                .setView(form)
-                .setPositiveButton("Save", (dialog, which) -> {
-                    Branch branch = new Branch();
-                    branch.id = existing == null ? null : existing.id;
-                    branch.name = textOf(etName);
-                    branch.code = textOf(etCode);
-                    attempt(() -> repo.saveBranch(currentUser, branch));
-                    load();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        startActivity(intent);
     }
 
     // ----- Downloads -----
