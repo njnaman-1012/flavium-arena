@@ -17,13 +17,13 @@ if (file("google-services.json").exists()) {
 }
 
 android {
-    namespace = "com.example.flaviumarena"
+    namespace = "in.flavium.arena"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.flaviumarena"
+        applicationId = "in.flavium.arena"
         minSdk = 24
         targetSdk = 37
         versionCode = 1

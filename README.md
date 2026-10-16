@@ -40,7 +40,7 @@ Firebase is planned as the next stage (see [Not built yet](#not-built-yet)).
 ## Project structure
 
 ```
-app/src/main/java/com/example/flaviumarena/
+app/src/main/java/in/flavium/arena/
   model/      Plain data classes: User, Category, Match, Registration, MedalRow ...
   auth/       AccessControl (every permission rule) and Session (who is logged in here)
   scoring/    The rules of the games, in pure Java: sets, tennis games, race and throw
@@ -220,8 +220,8 @@ keyPassword=...
 ./gradlew bundleRelease
 ```
 
-The bundle is `app/build/outputs/bundle/release/app-release.aab`. Google Play does not
-accept application ids that start with `com.example`; see "Before publishing" below.
+The bundle is `app/build/outputs/bundle/release/app-release.aab`. Its application id is
+`in.flavium.arena`, which cannot change after the first upload to Google Play.
 
 If a development account is missing from a database that was created by an older
 version of the app, use "Create or repair this development account" on the login form.
@@ -241,7 +241,7 @@ device (`connectedDebugAndroidTest` would uninstall the app and erase it):
 ./gradlew assembleDebug assembleDebugAndroidTest
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb shell am instrument -w com.example.flaviumarena.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w in.flavium.arena.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 The device tests use temporary in-memory databases and never touch the app's own data.
@@ -349,8 +349,8 @@ the links between branches, registrations, fixtures and results are preserved.
 
 ### Firebase setup
 
-1. Firebase Console: a project, with an Android app whose package name is
-   `com.example.flaviumarena`.
+1. Firebase Console: the project `flavium-arena`, with an Android app whose package
+   name is `in.flavium.arena` (the app's permanent application id).
 2. Download `google-services.json` into `app/`. The file is ignored by git. Without it
    the app still builds and simply has no online sharing.
 3. Authentication: enable the Email/Password provider and leave sign-up allowed (the
@@ -489,11 +489,11 @@ needs billing has been enabled or deployed. That has consequences:
 
 ## Before publishing
 
-- **Application id.** Google Play refuses ids that start with `com.example`. Choose a
-  permanent id (for example `in.flavium.arena`), set `applicationId` in
-  `app/build.gradle.kts`, add an Android app with that id to the Firebase project and
-  replace `app/google-services.json` with the new file. The id cannot change after the
-  first upload to Play.
+- **Application id.** `in.flavium.arena`, registered in the Firebase project
+  `flavium-arena`; `app/google-services.json` must contain it. It cannot change after the
+  first upload to Play. (Phones that had the earlier development id
+  `com.example.flaviumarena` treat this as a different app: it starts empty and receives
+  the online festival when it connects.)
 - **Faculty email** in `app/src/main/res/values/config.xml`, or the first Faculty
   account cannot be created and the festival cannot be put online.
 - **Upload key** and `keystore.properties` (see "Building for Google Play").
